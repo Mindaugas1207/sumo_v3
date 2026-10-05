@@ -1,0 +1,85 @@
+#ifndef REMOTE_CODES_H
+#define REMOTE_CODES_H
+
+#include <cstdint>
+
+#define IR_CODE_POWER 0x0C
+#define IR_CODE_AUDIO 0x23
+#define IR_CODE_INFO 0x0F
+#define IR_CODE_SUBT 0x16
+#define IR_CODE_CH1 0x01
+#define IR_CODE_CH2 0x02
+#define IR_CODE_CH3 0x03
+#define IR_CODE_CH4 0x04
+#define IR_CODE_CH5 0x05
+#define IR_CODE_CH6 0x06
+#define IR_CODE_CH7 0x07
+#define IR_CODE_CH8 0x08
+#define IR_CODE_CH9 0x09
+#define IR_CODE_TIME 0x0A
+#define IR_CODE_CH0 0x00
+#define IR_CODE_CYCLE 0x2C
+#define IR_CODE_FAV 0x29
+#define IR_CODE_TEXT 0x3C
+#define IR_CODE_PVR 0x3F
+#define IR_CODE_EPG 0x25
+#define IR_CODE_LAST 0x2C
+#define IR_CODE_MP 0x1F
+#define IR_CODE_ZOOM 0x27
+#define IR_CODE_MODE 0x2B
+#define IR_CODE_UP 0x12
+#define IR_CODE_LEFT 0x15
+#define IR_CODE_OK 0x3F
+#define IR_CODE_RIGHT 0x14
+#define IR_CODE_DOWN 0x13
+#define IR_CODE_MENU 0x3B
+#define IR_CODE_TVAV 0x38
+#define IR_CODE_EXIT 0x26
+#define IR_CODE_VOLUP 0x10
+#define IR_CODE_CHUP 0x20
+#define IR_CODE_MUTE 0x0D
+#define IR_CODE_VOLDOWN 0x11
+#define IR_CODE_CHDOWN 0x21
+
+enum class IrCommand : uint32_t
+{
+    POWER = IR_CODE_POWER,
+    AUDIO = IR_CODE_AUDIO,
+    INFO = IR_CODE_INFO,
+    SUBT = IR_CODE_SUBT,
+    CH1 = IR_CODE_CH1,
+    CH2 = IR_CODE_CH2,
+    CH3 = IR_CODE_CH3,
+    CH4 = IR_CODE_CH4,
+    CH5 = IR_CODE_CH5,
+    CH6 = IR_CODE_CH6,
+    CH7 = IR_CODE_CH7,
+    CH8 = IR_CODE_CH8,
+    CH9 = IR_CODE_CH9,
+    TIME = IR_CODE_TIME,
+    CH0 = IR_CODE_CH0,
+    CYCLE = IR_CODE_CYCLE,
+    FAV = IR_CODE_FAV,
+    TEXT = IR_CODE_TEXT,
+    PVR = IR_CODE_PVR,
+    EPG = IR_CODE_EPG,
+    LAST = IR_CODE_LAST,
+    MP = IR_CODE_MP,
+    ZOOM = IR_CODE_ZOOM,
+    MODE = IR_CODE_MODE,
+    UP = IR_CODE_UP,
+    LEFT = IR_CODE_LEFT,
+    OK = IR_CODE_OK,
+    RIGHT = IR_CODE_RIGHT,
+    DOWN = IR_CODE_DOWN,
+    MENU = IR_CODE_MENU,
+    TVAV = IR_CODE_TVAV,
+    EXIT = IR_CODE_EXIT,
+    VOLUP = IR_CODE_VOLUP,
+    CHUP = IR_CODE_CHUP,
+    MUTE = IR_CODE_MUTE,
+    VOLDOWN = IR_CODE_VOLDOWN,
+    CHDOWN = IR_CODE_CHDOWN
+};
+
+#endif // REMOTE_CODES_H
