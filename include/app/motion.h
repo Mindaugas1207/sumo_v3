@@ -29,6 +29,8 @@ void move_linear(double distance);
 void move_rotational_degrees(double angle);
 void move_rotational(double angle);
 bool is_move_complete(void);
+void move_cancel(void);
+void set_velocity(double v, double w);
 
 MotionData get_motion_data(void);
 

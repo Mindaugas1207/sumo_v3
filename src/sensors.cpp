@@ -64,7 +64,7 @@ void line_sensor_callback(void* context, uint32_t events)
 {
     uint index = reinterpret_cast<uintptr_t>(context);
 
-    utils::debug_printf("Line sensor %d event: 0x%x\n", index, events);
+    //utils::debug_printf("Line sensor %d event: 0x%x\n", index, events);
 
     bool state;
     if (events & GPIO_IRQ_EDGE_RISE)

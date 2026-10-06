@@ -25,7 +25,7 @@ int main()
     //left_motor.setPower(0.4);
      //   right_motor.setPower(0.4);
 
-    
+    bool line_sensor_triggered = false;
 
     //sleep_ms(1000);
     //stdio_init_all();
@@ -49,6 +49,36 @@ int main()
             {
                 motion_set_motors_enabled(false);
                 display_enabled = true;
+            }
+        }
+
+        if (start_state)
+        {
+            auto sensorData = get_sensor_data();
+            bool line_sensor_left_gpio_state = gpio_get(LINE_SENSOR_LEFT_PIN);
+            bool line_sensor_right_gpio_state = gpio_get(LINE_SENSOR_RIGHT_PIN);
+            if (!line_sensor_triggered && (line_sensor_left_gpio_state || line_sensor_right_gpio_state))
+            {
+                line_sensor_triggered = true;
+                move_cancel();
+                sleep_ms(10);
+                set_velocity(-0.3, 0.0);
+                sleep_ms(10); // Wait for a short duration before starting the backward move
+                move_linear(-0.2); // Move backward slightly when a line sensor is triggered
+                while (!is_move_complete())
+                {
+                    // Wait until the backward move is complete
+                }
+                sleep_ms(10);
+                move_rotational_degrees(180); // Turn around after moving backward slightly
+                while (!is_move_complete())
+                {
+                    // Wait until the turn is complete
+                }
+            }
+            else if (!(line_sensor_left_gpio_state || line_sensor_right_gpio_state))
+            {
+                line_sensor_triggered = false;
             }
         }
 

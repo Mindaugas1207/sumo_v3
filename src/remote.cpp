@@ -66,11 +66,13 @@ void handle_remote(void)
             break;
         case IrCommand::VOLUP:
             if (repeat) break;
-            move_linear(0.01); // Example: move forward by 10cm
+            if (!is_move_complete()) break; // prevent starting a new move before the previous one is complete
+            move_linear(0.3); // Example: move forward by 10cm
             break;
         case IrCommand::VOLDOWN:
             if (repeat) break;
-            move_linear(-0.01); // Example: move backward by 10cm
+            if (!is_move_complete()) break; // prevent starting a new move before the previous one is complete
+            move_linear(-0.3); // Example: move backward by 10cm
             break;
         case IrCommand::CHUP:
             if (repeat) break;

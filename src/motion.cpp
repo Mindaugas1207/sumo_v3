@@ -13,18 +13,23 @@ constexpr double SystemVoltage = 12.0;
 
 constexpr double NominalMotorRadPerSec = NominalMotorRPM * 2.0 * M_PI / 60.0;
 
-constexpr double WHEEL_RADIUS = 0.032 / 2.0; // Wheel radius in meters
+constexpr double WHEEL_RADIUS = 0.030 / 2.0; // Wheel radius in meters
 constexpr double WHEEL_BASE = 0.06; // Distance between the wheels in meters
 
 constexpr double Ks = 0.05;
 constexpr double Ke = NominalMotorVoltage / (NominalMotorRadPerSec * SystemVoltage);
 
-constexpr double SurfaceSlipCorrection = 0.5; // Correction factor for surface slip, dimensionless
+constexpr double SurfaceSlipCorrection = 5.0; // Correction factor for surface slip, dimensionless
+constexpr double AngularSlipCorrection = 2; // Correction factor for angular slip, dimensionless
+constexpr double LinearAccelerationMiddle = 0.6; //Larger value means less time for acceleration and more for deceleration
+constexpr double AngularAccelerationMiddle = 0.6; //Larger value means less time for acceleration and more for deceleration
 
 constexpr double MaxAcceleration = SurfaceSlipCorrection * NominalMotorRadPerSec * WHEEL_RADIUS; // Maximum linear acceleration of the robot in m/s^2, assuming the motor can reach its nominal speed instantly
-constexpr double MaxVelocity = NominalMotorRadPerSec * WHEEL_RADIUS; // Maximum linear velocity of the robot in m/s, assuming the motor can reach its nominal speed instantly
-constexpr double MaxAngularAcceleration = SurfaceSlipCorrection * MaxAcceleration / (WHEEL_BASE / 2.0); // Maximum angular acceleration of the robot in rad/s^2
-constexpr double MaxAngularVelocity = MaxVelocity / (WHEEL_BASE / 2.0); // Maximum angular velocity of the robot in rad/s
+constexpr double MaxDeacceleration = 1.0 * MaxAcceleration;
+constexpr double MaxVelocity = 0.8 * NominalMotorRadPerSec * WHEEL_RADIUS; // Maximum linear velocity of the robot in m/s, assuming the motor can reach its nominal speed instantly
+constexpr double MaxAngularAcceleration = AngularSlipCorrection * NominalMotorRadPerSec * WHEEL_RADIUS / (WHEEL_BASE / 2.0); // Maximum angular acceleration of the robot in rad/s^2
+constexpr double MaxAngulardeacceleration = 0.6 * MaxAngularAcceleration;
+constexpr double MaxAngularVelocity = 0.8 * NominalMotorRadPerSec * WHEEL_RADIUS / (WHEEL_BASE / 2.0); // Maximum angular velocity of the robot in rad/s
 
 constexpr double G = 9.80665; // Gravity constant in m/s^2, used to convert accelerometer readings from g to m/s^2. The standard value is 9.80665 m/s^2.
 constexpr double a_cutoff = 10.0; //Hz
@@ -53,7 +58,7 @@ double move_start_distance = 0.0; // Distance at the start of the current move, 
 double move_start_angle = 0.0; // Angle at the start of the current move, in radians
 
 //PID controller for maintaining the robot's heading
-PID heading_pid(0.1, 0.01, 0.05); // Example PID gains: Kp = 0.1, Ki = 0.01, Kd = 0.05
+PID heading_pid(1.0, 0.0, 0.0); // Example PID gains: Kp = 0.1, Ki = 0.01, Kd = 0.05
 
 mutex_t motion_data_mutex;
 
@@ -79,6 +84,8 @@ void move_linear(double distance)
     move_type = true; // Linear move
     move_target_distance = distance;
     move_start_distance = distance_forward;
+    move_target_angle = 0;
+    move_start_angle = orientation.yaw();
     mutex_exit(&motion_data_mutex);
 }
 
@@ -96,6 +103,25 @@ void move_rotational(double angle)
     move_type = false; // Rotational move
     move_target_angle = angle;
     move_start_angle = orientation.yaw();
+    mutex_exit(&motion_data_mutex);
+}
+
+void move_cancel(void)
+{
+    mutex_enter_blocking(&motion_data_mutex);
+    target_velocity = 0.0;
+    target_angular_velocity = 0.0;
+    move_started = false;
+    move_complete = true;
+    move_stopped = true;
+    mutex_exit(&motion_data_mutex);
+}
+
+void set_velocity(double v, double w)
+{
+    mutex_enter_blocking(&motion_data_mutex);
+    target_velocity = v;
+    target_angular_velocity = w;
     mutex_exit(&motion_data_mutex);
 }
 
@@ -123,13 +149,6 @@ MotionData get_motion_data(void)
     return data;
 }
 
-void set_velocity(double v, double w)
-{
-    mutex_enter_blocking(&motion_data_mutex);
-    target_velocity = v;
-    target_angular_velocity = w;
-    mutex_exit(&motion_data_mutex);
-}
 
 void motion_set_motors_enabled(bool enabled)
 {
@@ -153,13 +172,16 @@ void motion_reset(void)
     right_velocity = 0.0;
     target_velocity = 0.0;
     target_angular_velocity = 0.0;
-    move_target_angle = 0.0;
-    move_start_angle = 0.0;
+    move_target_angle = 0;
+    move_start_angle = orientation.yaw();
     move_target_distance = 0.0;
     move_start_distance = 0.0;
+    left_distance = 0.0;
+    right_distance = 0.0;
+    distance_forward = 0.0;
     move_started = false;
-    move_complete = false;
-    move_stopped = false;
+    move_complete = true;
+    move_stopped = true;
     move_type = false;
     mutex_exit(&motion_data_mutex);
 }
@@ -206,7 +228,7 @@ void motion_update(void)
         }
         if (right_encoder.readAngleRadians(angle_right_raw))
         {
-            d_angle_right = vmath::angleDifference(angle_right_raw, last_right_angle);
+            d_angle_right = -vmath::angleDifference(angle_right_raw, last_right_angle);
             last_right_angle = angle_right_raw;
         }
         else
@@ -259,14 +281,17 @@ void motion_update(void)
         left_distance += d_angle_left * WHEEL_RADIUS;
         right_distance += d_angle_right * WHEEL_RADIUS;
         distance_forward = (left_distance + right_distance) / 2.0; // Average distance traveled by the robot
-
+        mutex_enter_blocking(&motion_data_mutex);
         if (move_started)
         {
+            //utils::debug_printf("Move started: %f, Move start distance: %f, start angle: %f\n", distance_forward, move_start_distance, move_start_angle);
             if (move_type) // Linear move
             {
                 double distance_moved = distance_forward - move_start_distance;
+                double distance_remaining = move_target_distance - distance_moved;
+                //utils::debug_printf("distance forward: %f, move start distance: %f, Distance moved: %f, Target distance: %f\n", distance_forward, move_start_distance, distance_moved, move_target_distance);
 
-                if (fabs(distance_moved) >= fabs(move_target_distance) || move_stopped)
+                if (fabs(distance_remaining) <= 0 || move_stopped)
                 {
                     move_complete = true;
                     move_started = false;
@@ -278,33 +303,37 @@ void motion_update(void)
                 else
                 {
                     move_complete = false;
-                    if (fabs(distance_moved) < fabs(move_target_distance) / 2.0) //Halfway not yet reached
+
+                    if (fabs(distance_remaining) > fabs(move_target_distance) * LinearAccelerationMiddle) //Halfway not yet reached
                     {
-                        if (move_target_distance < 0)
+                        if (distance_remaining < 0)
                             target_velocity = std::max(target_velocity - MaxAcceleration * dt, -MaxVelocity); // Accelerate towards the maximum backward velocity (backward)
                         else
-                            target_velocity = std::max(target_velocity + MaxAcceleration * dt, MaxVelocity); // Accelerate towards the maximum forward velocity (forward)
+                            target_velocity = std::min(target_velocity + MaxAcceleration * dt, MaxVelocity); // Accelerate towards the maximum forward velocity (forward)
                     }
                     else // Past halfway point
                     {
-                        if (move_target_distance < 0)
-                            target_velocity = std::max(target_velocity + MaxAcceleration * dt, 0.0); // Decelerate towards stopping
+                        if (distance_remaining < 0)
+                            target_velocity = std::min(target_velocity + MaxDeacceleration * dt, 0.0); // Decelerate towards stopping
                         else
-                            target_velocity = std::max(target_velocity - MaxAcceleration * dt, 0.0); // Decelerate towards stopping
+                            target_velocity = std::max(target_velocity - MaxDeacceleration * dt, 0.0); // Decelerate towards stopping
 
                         if (target_velocity == 0.0)
                             move_stopped = true;
                     }
 
-                    double heading_correction = heading_pid.compute_radians(0.0, orientation.yaw(), dt); // Maintain current heading during linear move
-                    target_angular_velocity = std::max(std::min(heading_correction, MaxAngularVelocity), -MaxAngularVelocity); // Apply heading correction during linear move
+                    double heading_correction = heading_pid.compute_radians(move_start_angle, orientation.yaw(), dt); // Maintain current heading during linear move
+                    target_angular_velocity = heading_correction;
+                    //utils::debug_printf("target_velocity: %f, Target angular velocity: %f\n", target_velocity, target_angular_velocity);
+                    //target_angular_velocity = std::max(std::min(heading_correction, MaxAngularVelocity), -MaxAngularVelocity); // Apply heading correction during linear move
                 }
             }
             else // Rotational move
             {
-                double angle_turned = vmath::angleDifference(move_start_angle, orientation.yaw());
+                double angle_turned = vmath::angleDifference(orientation.yaw(), move_start_angle);
+                double angle_remaining = vmath::angleDifference(move_target_angle, angle_turned);
 
-                if (fabs(angle_turned) >= fabs(move_target_angle) || move_stopped)
+                if (fabs(angle_remaining) <= 0 || move_stopped)
                 {
                     move_complete = true;
                     move_started = false;
@@ -317,44 +346,60 @@ void motion_update(void)
                 {
                     move_complete = false;
 
-                    if (fabs(angle_turned) < fabs(move_target_angle) / 2.0) // Halfway not yet reached
+                    if (fabs(angle_remaining) > fabs(move_target_angle) * AngularAccelerationMiddle) // Halfway not yet reached
                     {
-                        if (move_target_angle < 0)
+                        if (angle_remaining < 0)
                             target_angular_velocity = std::max(target_angular_velocity - MaxAngularAcceleration * dt, -MaxAngularVelocity); // Accelerate towards the maximum negative angular velocity (turning left)
                         else
-                            target_angular_velocity = std::max(target_angular_velocity + MaxAngularAcceleration * dt, MaxAngularVelocity); // Accelerate towards the maximum positive angular velocity (turning right)
+                            target_angular_velocity = std::min(target_angular_velocity + MaxAngularAcceleration * dt, MaxAngularVelocity); // Accelerate towards the maximum positive angular velocity (turning right)
                     }
                     else // Past halfway point
                     {
-                        if (move_target_angle < 0)
-                            target_angular_velocity = std::max(target_angular_velocity + MaxAngularAcceleration * dt, 0.0); // Decelerate towards stopping
+                        if (angle_remaining < 0)
+                            target_angular_velocity = std::min(target_angular_velocity + MaxAngulardeacceleration * dt, 0.0); // Decelerate towards stopping
                         else
-                            target_angular_velocity = std::max(target_angular_velocity - MaxAngularAcceleration * dt, 0.0); // Decelerate towards stopping
+                            target_angular_velocity = std::max(target_angular_velocity - MaxAngulardeacceleration * dt, 0.0); // Decelerate towards stopping
 
                         if (target_angular_velocity == 0.0)
                             move_stopped = true;
                     }
+
+                    //utils::debug_printf("Angle turned: %f, Angle remaining: %f, Target angular velocity: %f\n", angle_turned, angle_remaining, target_angular_velocity);
                 }
             }
         }
+        else
+        {
+            target_velocity = 0.0;
+            target_angular_velocity = 0.0;
+        }
 
-        double left_setpoint = (target_velocity - target_angular_velocity * WHEEL_BASE / 2.0) / WHEEL_RADIUS;
-        double right_setpoint = (target_velocity + target_angular_velocity * WHEEL_BASE / 2.0) / WHEEL_RADIUS;
-
-        double power_left = left_setpoint >= 0 ? Ks + Ke * left_setpoint : -Ks + Ke * left_setpoint;
-        double power_right = right_setpoint >= 0 ? Ks + Ke * right_setpoint : -Ks + Ke * right_setpoint;
 
         if (motors_enabled)
         {
-            left_motor.setPower(power_left);
-            right_motor.setPower(power_right);
+            if (target_velocity == 0.0 && target_angular_velocity == 0.0)
+            {
+                left_motor.setPower(0.0);
+                right_motor.setPower(0.0);
+            }
+            else
+            {
+                double left_setpoint = (target_velocity - target_angular_velocity * WHEEL_BASE / 2.0) / WHEEL_RADIUS;
+                double right_setpoint = (target_velocity + target_angular_velocity * WHEEL_BASE / 2.0) / WHEEL_RADIUS;
+
+                double power_left = left_setpoint >= 0 ? Ks + Ke * left_setpoint : -Ks + Ke * left_setpoint;
+                double power_right = right_setpoint >= 0 ? Ks + Ke * right_setpoint : -Ks + Ke * right_setpoint;
+
+                left_motor.setPower(power_left);
+                right_motor.setPower(power_right);
+            }
         }
         else
         {
             left_motor.setPower(0.0);
             right_motor.setPower(0.0);
         }
-
+        mutex_exit(&motion_data_mutex);
     #if PRINT_IMU_DATA
         static utils::time_t last_print_time = 0;
         if (utils::hasElapsed_us(last_print_time, 1000000 / PRINT_RATE))

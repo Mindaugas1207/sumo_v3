@@ -34,6 +34,7 @@ inline constexpr unsigned int num_line_sensors = LINE_SENSOR_COUNT;
 extern IoInterruptEvent imu_data_ready_event;
 extern IoInterruptEvent line_sensor_events[num_line_sensors];
 
+
 extern PioWS2812 STATUS_Led;
 
 extern LSM6DSR imu;
