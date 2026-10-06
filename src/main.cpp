@@ -14,7 +14,8 @@
 
 //#include "config.h"
 
-
+bool display_enabled = false;
+bool start_state = false;
 
 int main()
 {
@@ -34,6 +35,23 @@ int main()
     {
         handle_remote();
         handle_sensors();
+
+        bool st = gpio_get(START_PIN);
+        if (st != start_state)
+        {
+            start_state = st;
+            if (start_state)
+            {
+                motion_set_motors_enabled(true);
+                display_enabled = false;
+            }
+            else
+            {
+                motion_set_motors_enabled(false);
+                display_enabled = true;
+            }
+        }
+
         STATUS_Led.update();
 
         //int driver_enable = gpio_get(MOTOR_DRIVER_ENABLE);
@@ -44,6 +62,8 @@ int main()
 
 void second_core_main(void)
 {
+    motion_init();
+
     while (true)
     {
         motion_update();

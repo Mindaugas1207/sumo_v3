@@ -13,14 +13,22 @@ struct MotionData
     //Wheel encoders
     double right_wheel_angle;
     double left_wheel_angle;
+    double right_wheel_velocity;
+    double left_wheel_velocity;
+    double right_wheel_distance;
+    double left_wheel_distance;
+    double forward_distance;
 };
-
-extern double left_setpoint;//rad
-extern double right_setpoint;//rad
 
 void motion_init(void);
 void motion_update(void);
 void motion_reset(void);
+
+void motion_set_motors_enabled(bool enabled);
+void move_linear(double distance);
+void move_rotational_degrees(double angle);
+void move_rotational(double angle);
+bool is_move_complete(void);
 
 MotionData get_motion_data(void);
 

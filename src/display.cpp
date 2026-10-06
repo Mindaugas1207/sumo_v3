@@ -10,7 +10,7 @@
 #include "app/sensors.h"
 
 constexpr int TOP_RIBON_SIZE = 6;
-constexpr int REFRESH_RATE = 20; // Refresh rate for the display in Hz
+constexpr int REFRESH_RATE = 10; // Refresh rate for the display in Hz
 constexpr int REFRESH_PERIOD_US = 1000000 / REFRESH_RATE; // Refresh period for the display in microseconds
 
 //TextBox MenuItem_Settings(0, 0, "SETTINGS");
@@ -128,8 +128,12 @@ public:
         snprintf(buffer, sizeof(buffer), "Stationary: %s", motionData.stationary ? "Yes" : "No");
         g.drawText(x, y, buffer, -1, -1, Color::White());
         y += textHeight;
-        snprintf(buffer, sizeof(buffer), "R: %.2f L: %.2f", motionData.right_wheel_angle * 180.0 / M_PI, motionData.left_wheel_angle * 180.0 / M_PI);
+        snprintf(buffer, sizeof(buffer), "R: %.2f L: %.2f Df: %.2f", motionData.right_wheel_angle * 180.0 / M_PI, motionData.left_wheel_angle * 180.0 / M_PI, motionData.forward_distance);
         g.drawText(x, y, buffer, -1, -1, Color::White());
+        y += textHeight;
+        snprintf(buffer, sizeof(buffer), "vl: %.2f RPM vr: %.2f RPM", motionData.left_wheel_velocity * 60.0 / (2.0 * M_PI), motionData.right_wheel_velocity * 60.0 / (2.0 * M_PI));
+        g.drawText(x, y, buffer, -1, -1, Color::White());
+        y += textHeight;
 
         x = 0;
         y = g.getHeight() - textHeight * 2;
