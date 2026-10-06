@@ -44,6 +44,26 @@ endif()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 message(STATUS "Using Python interpreter: ${Python3_EXECUTABLE}")
 
+option(MINI_SUMO_AUTO_INSTALL_PILLOW "Automatically pip install Pillow if missing" ON)
+
+execute_process(COMMAND "${Python3_EXECUTABLE}" -c "import PIL"
+        RESULT_VARIABLE MINI_SUMO_PILLOW_RESULT OUTPUT_QUIET ERROR_QUIET)
+if(NOT MINI_SUMO_PILLOW_RESULT EQUAL 0)
+        if(MINI_SUMO_AUTO_INSTALL_PILLOW)
+                message(STATUS "Pillow not found, installing with pip...")
+                execute_process(COMMAND "${Python3_EXECUTABLE}" -m pip install pillow
+                        RESULT_VARIABLE MINI_SUMO_PIP_RESULT)
+                execute_process(COMMAND "${Python3_EXECUTABLE}" -c "import PIL"
+                        RESULT_VARIABLE MINI_SUMO_PILLOW_RESULT OUTPUT_QUIET ERROR_QUIET)
+        endif()
+        if(NOT MINI_SUMO_PILLOW_RESULT EQUAL 0)
+                message(FATAL_ERROR
+                        "Python module 'Pillow' is required for asset generation but is not installed for ${Python3_EXECUTABLE}.\n"
+                        "Install it with: \"${Python3_EXECUTABLE}\" -m pip install pillow\n"
+                        "or configure with -DMINI_SUMO_AUTO_INSTALL_PILLOW=ON.")
+        endif()
+endif()
+
 get_filename_component(MINI_SUMO_PYTHON_DIR "${Python3_EXECUTABLE}" DIRECTORY)
 set(MINI_SUMO_PYTHON_SITE_PACKAGES "${MINI_SUMO_PYTHON_DIR}/Lib/site-packages")
 
