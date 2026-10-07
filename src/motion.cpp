@@ -154,6 +154,27 @@ void motion_set_motors_enabled(bool enabled)
 {
     mutex_enter_blocking(&motion_data_mutex);
     motors_enabled = enabled;
+    if (!enabled)
+    {
+        imu_filter.reset();
+        left_angle = 0.0;
+        right_angle = 0.0;
+        left_velocity = 0.0;
+        right_velocity = 0.0;
+        target_velocity = 0.0;
+        target_angular_velocity = 0.0;
+        move_target_angle = 0;
+        move_start_angle = orientation.yaw();
+        move_target_distance = 0.0;
+        move_start_distance = 0.0;
+        left_distance = 0.0;
+        right_distance = 0.0;
+        distance_forward = 0.0;
+        move_started = false;
+        move_complete = true;
+        move_stopped = true;
+        move_type = false;
+    }
     mutex_exit(&motion_data_mutex);
 }
 

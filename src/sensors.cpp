@@ -4,7 +4,7 @@
 #include "sensors.h"
 #include <array>
 
-constexpr int MAX_DISTANCE = 1000;
+
 
 std::array<int, num_distance_sensors> distanceSensorValues;
 bool line_sensor_left;
@@ -54,6 +54,9 @@ SensorData get_sensor_data(void)
     for (int i = 0; i < num_distance_sensors; i++)
     {
         data.distanceSensorValues.push_back(distanceSensorValues[i]);
+        bool detected = distanceSensorValues[i] < DETECTION_THRESHOLD;
+        data.distanceSensorDetected.push_back(detected);
+        data.targetDetected |= detected;
     }
     data.lineSensorLeft = line_sensor_left;
     data.lineSensorRight = line_sensor_right;
