@@ -72,7 +72,7 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(mini-sumo-v2 src/main.cpp src/hardware.cpp src/display.cpp src/remote.cpp src/motion.cpp src/sensors.cpp
+add_executable(mini-sumo-v2 src/main.cpp
         )
 
 set(MINI_SUMO_IMAGE_SOURCE_DIR ${CMAKE_SOURCE_DIR}/resources/images)
@@ -161,6 +161,7 @@ target_include_directories(mini-sumo-v2 PRIVATE
 # Add any user requested libraries
 target_link_libraries(mini-sumo-v2 
         hardware_i2c
+        hardware_dma
         hardware_pio
         hardware_pwm
         hardware_flash 
