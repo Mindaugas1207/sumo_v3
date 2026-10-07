@@ -88,6 +88,17 @@ void handle_remote(void)
             if (repeat) break;
             motion_reset();
             break;
+        case IrCommand::MUTE:
+            if (repeat) break;
+            STATUS_Led.setBlocking(Color::Magenta());
+            active_config.configured = false;
+            save_config(true);
+            utils::info_printf("Rebooting...\n");
+            utils::sleep_ms(500);
+            watchdog_reboot(0, 0, 0);
+            //this should not be reached.
+            STATUS_Led.setBlocking(Color::Black());
+            break;
         case IrCommand::INFO: // Toggle debug output
             if (repeat) break;
             utils::debug_enable(!utils::isDebugEnabled);

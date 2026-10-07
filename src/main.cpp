@@ -12,36 +12,31 @@
 #include "app/motion.h"
 #include "app/sensors.h"
 
-enum CombatState
-{
-    STATE_SEARCH,
-    STATE_APPROACH,
-    STATE_PREPARE_ATTACK,
-    STATE_ATTACK
-};
+
 
 //#include "config.h"
 
 bool display_enabled = true;
 bool start_state = false;
-constexpr int MOVE_COOLDOWN_MS = 33; // Move cooldown in milliseconds, because sensors internaly are read at this interval
-constexpr int MOVE_TIMEOUT = 100; // Move timeout in milliseconds
+constexpr int MOVE_COOLDOWN_MS = 100; // Move cooldown in milliseconds, because sensors internaly are read at this interval
+constexpr int MOVE_TIMEOUT = 200; // Move timeout in milliseconds
 
 
 // Sensor index definitions for easier reference in the code
-constexpr int SI_LEFT45 = 6;
-constexpr int SI_RIGHT45 = 0;
+constexpr int SI_LEFT45 = 5;
+constexpr int SI_RIGHT45 = 1;
 constexpr int SI_FRONT = 3;
-constexpr int SI_LEFT2p5 = 5;
-constexpr int SI_RIGHT2p5 = 1;
-constexpr int SI_LEFT35 = 4;
-constexpr int SI_RIGHT35 = 2;
+constexpr int SI_LEFT2p5 = 6;
+constexpr int SI_RIGHT2p5 = 0;
+constexpr int SI_LEFT35 = 2;
+constexpr int SI_RIGHT35 = 4;
 
-constexpr float FRONT_SENSOR_ATTACK_THRESHOLD = 100; // Distance threshold for preparing attack in mm
-constexpr int ATTACK_PREPARE_TIME = 50;
+constexpr int FRONT_SENSOR_ATTACK_THRESHOLD = 100; // Distance threshold for preparing attack in mm
+constexpr int ATTACK_PREPARE_TIME = 300;
 constexpr int ATTACK_TIMEOUT = 100; // Attack timeout in milliseconds
 constexpr double ATTACK_VELOCITY = 0.1;
 constexpr double SEARCH_VELOCITY = 0.2;
+CombatState combat_state = STATE_SEARCH;
 
 int main()
 {
@@ -53,7 +48,7 @@ int main()
 
     bool line_sensor_triggered = false;
 
-    CombatState combat_state = STATE_SEARCH;
+    
 
     utils::time_t last_move_time = 0;
     bool on_cooldown = false;
@@ -95,16 +90,14 @@ int main()
             {
                 line_sensor_triggered = true;
                 move_cancel();
-                sleep_ms(5);
-                set_velocity(-0.3, 0.0);
-                sleep_ms(10); // Wait for a short duration before starting the backward move
-                move_linear(-0.2); // Move backward slightly when a line sensor is triggered
+                sleep_ms(5); // Wait for a short duration before starting the backward move
+                move_linear(-0.05); // Move backward slightly when a line sensor is triggered
                 while (!is_move_complete())
                 {
                     // Wait until the backward move is complete
                 }
                 sleep_ms(10);
-                move_rotational_degrees(180); // Turn around after moving backward slightly
+                move_rotational_degrees(120); // Turn around after moving backward slightly
                 while (!is_move_complete())
                 {
                     // Wait until the turn is complete
@@ -136,6 +129,9 @@ int main()
                 if (utils::hasElapsed_ms(last_move_time, MOVE_TIMEOUT))
                 {
                     move_cancel(); // Cancel the move if it has timed out
+                    last_move_time = utils::now(); // Update the last move time
+                    on_cooldown = true; // Set the cooldown flag after moving
+                    continue; // Skip the rest of the loop after handling the timeout
                 }
             }
 
@@ -163,144 +159,168 @@ int main()
                 avg_distance = (sensorData.distanceSensorValues[SI_LEFT2p5] + sensorData.distanceSensorValues[SI_RIGHT2p5]) / 2;
             }
 
+            //utils::debug_printf("TOTAL %d\n",
+            //                   sensorData.targetDetected);
+
             switch (combat_state)
             {
             case STATE_SEARCH:
-                // Handle search state
-                if (sensorData.targetDetected)
                 {
-                    move_cancel();
-                    last_move_time = utils::now(); // Update the last move time
-                    on_cooldown = true; // Set the cooldown flag after moving
-                    combat_state = STATE_APPROACH; // If a target is detected, switch to approach state
-                }
-                // Move at a constant velocity, the robot will turn around when it hits the edge of the arena using the line avoidance sistem.
-                set_velocity(SEARCH_VELOCITY, 0.0);
-                last_move_time = utils::now(); // Update the last move time
-                on_cooldown = true; // Set the cooldown flag after moving
-
-                break;
-            case STATE_APPROACH:
-                // Handle approach state
-                if (!sensorData.targetDetected)
-                {
-                    combat_state = STATE_SEARCH; // If no target is detected, go back to search state
-                    break;
-                }
-
-                int remaining_distance = avg_distance - FRONT_SENSOR_ATTACK_THRESHOLD;
-
-                if (avg_distance < MAX_DISTANCE)
-                {
-                    //Target is detected in front, move towards it
-                    if (remaining_distance <= 0)
-                    {
-                        // Already at or past the attack threshold
-                        combat_state = STATE_PREPARE_ATTACK;
-                        attack_prepare_start_time = utils::now(); // Record the start time of the attack preparation
-                        break;
-                    }
-                    // Move towards the target by half the remaining distance
-                    move_linear(remaining_distance / 2000.0); // Convert mm to meters and move forward
-                    last_move_time = utils::now(); // Update the last move time
-                    on_cooldown = true; // Set the cooldown flag after moving
-                    break; // Exit the switch after moving
-                }
-
-                if (sensorData.distanceSensorDetected[SI_LEFT2p5])
-                {
-                    //if only one side sensor detects the target, turn slightly.
-                    move_rotational_degrees(-2.5);
-                    last_move_time = utils::now(); // Update the last move time
-                    on_cooldown = true; // Set the cooldown flag after moving
-                    break; // Exit the switch after moving
-                }
-
-                if (sensorData.distanceSensorDetected[SI_RIGHT2p5])
-                {
-                    //if only one side sensor detects the target, turn slightly.
-                    move_rotational_degrees(2.5);
-                    last_move_time = utils::now(); // Update the last move time
-                    on_cooldown = true; // Set the cooldown flag after moving
-                    break; // Exit the switch after moving
-                }
-
-                if (sensorData.distanceSensorDetected[SI_LEFT35])
-                {
-                    move_rotational_degrees(-35);
-                    last_move_time = utils::now(); // Update the last move time
-                    on_cooldown = true; // Set the cooldown flag after moving
-                    break; // Exit the switch after moving
-                }
-
-                if (sensorData.distanceSensorDetected[SI_RIGHT35])
-                {
-                    move_rotational_degrees(35);
-                    last_move_time = utils::now(); // Update the last move time
-                    on_cooldown = true; // Set the cooldown flag after moving
-                    break; // Exit the switch after moving
-                }
-
-                if (sensorData.distanceSensorDetected[SI_LEFT45])
-                {
-                    move_rotational_degrees(-45);
-                    last_move_time = utils::now(); // Update the last move time
-                    on_cooldown = true; // Set the cooldown flag after moving
-                    break; // Exit the switch after moving
-                }
-
-                if (sensorData.distanceSensorDetected[SI_RIGHT45])
-                {
-                    move_rotational_degrees(45);
-                    last_move_time = utils::now(); // Update the last move time
-                    on_cooldown = true; // Set the cooldown flag after moving
-                    break; // Exit the switch after moving
-                }
-
-                break;
-            case STATE_PREPARE_ATTACK:
-                if (!sensorData.targetDetected)
-                {
-                    combat_state = STATE_SEARCH; // If no target is detected, go back to search state
-                    break;
-                }
-
-                if (avg_distance > FRONT_SENSOR_ATTACK_THRESHOLD)
-                {
-                    combat_state = STATE_APPROACH; // If the average distance is greater than the threshold, switch to approach state
-                    break;
-                }
-
-                if (utils::hasElapsed_ms(attack_prepare_start_time, ATTACK_PREPARE_TIME))
-                {
-                    combat_state = STATE_ATTACK; // Switch to attack state after the preparation time has elapsed
-                    break;
-                }
-
-                // Handle prepare attack state
-                break;
-            case STATE_ATTACK:
-                // Handle attack state
-                if (!sensorData.targetDetected || avg_distance > FRONT_SENSOR_ATTACK_THRESHOLD)
-                {
-                    if (utils::hasElapsed_ms(attack_target_last_detected_time, ATTACK_TIMEOUT))
+                    // Handle search state
+                    if (sensorData.targetDetected)
                     {
                         move_cancel();
                         last_move_time = utils::now(); // Update the last move time
                         on_cooldown = true; // Set the cooldown flag after moving
-                        combat_state = sensorData.targetDetected ? STATE_APPROACH : STATE_SEARCH; // If the target is lost and attack times out, go back to approach or search state
+                        combat_state = STATE_APPROACH; // If a target is detected, switch to approach state
+                    }
+                    // Move at a constant velocity, the robot will turn around when it hits the edge of the arena using the line avoidance sistem.
+                    move_linear(0.2);
+                    last_move_time = utils::now(); // Update the last move time
+                    on_cooldown = true; // Set the cooldown flag after moving
+
+                    break;
+                }
+            case STATE_APPROACH:
+                {
+                    //utils::debug_printf("Approach state: avg_distance = %d, targetDetected = %d\n", avg_distance, sensorData.targetDetected);
+
+                    // Handle approach state
+                    if (!sensorData.targetDetected)
+                    {
+                        combat_state = STATE_SEARCH; // If no target is detected, go back to search state
                         break;
                     }
+                    
+
+                    int remaining_distance = avg_distance - FRONT_SENSOR_ATTACK_THRESHOLD;
+                    //utils::debug_printf("Remaining distance to target: %d\n", remaining_distance);
+                    if (avg_distance < MAX_DISTANCE)
+                    {
+                        //Target is detected in front, move towards it
+                        if (remaining_distance <= 0)
+                        {
+                            // Already at or past the attack threshold
+                            combat_state = STATE_PREPARE_ATTACK;
+                            attack_prepare_start_time = utils::now(); // Record the start time of the attack preparation
+                            break;
+                        }
+                        // Move towards the target by half the remaining distance
+                        move_linear(remaining_distance / 2000.0); // Convert mm to meters and move forward
+                        last_move_time = utils::now(); // Update the last move time
+                        on_cooldown = true; // Set the cooldown flag after moving
+                        break; // Exit the switch after moving
+                    }
+
+                    if (sensorData.distanceSensorDetected[SI_LEFT2p5])
+                    {
+                        //if only one side sensor detects the target, turn slightly.
+                        move_rotational_degrees(-2.5);
+                        last_move_time = utils::now(); // Update the last move time
+                        on_cooldown = true; // Set the cooldown flag after moving
+                        break; // Exit the switch after moving
+                    }
+
+                    if (sensorData.distanceSensorDetected[SI_RIGHT2p5])
+                    {
+                        //if only one side sensor detects the target, turn slightly.
+                        move_rotational_degrees(2.5);
+                        last_move_time = utils::now(); // Update the last move time
+                        on_cooldown = true; // Set the cooldown flag after moving
+                        break; // Exit the switch after moving
+                    }
+
+                    if (sensorData.distanceSensorDetected[SI_LEFT35])
+                    {
+                        move_rotational_degrees(-35);
+                        last_move_time = utils::now(); // Update the last move time
+                        on_cooldown = true; // Set the cooldown flag after moving
+                        break; // Exit the switch after moving
+                    }
+
+                    if (sensorData.distanceSensorDetected[SI_RIGHT35])
+                    {
+                        utils::debug_printf("Right 35 sensor detected, rotating 35 degrees...\n");
+                        move_rotational_degrees(35);
+                        last_move_time = utils::now(); // Update the last move time
+                        on_cooldown = true; // Set the cooldown flag after moving
+                        break; // Exit the switch after moving
+                    }
+
+                    if (sensorData.distanceSensorDetected[SI_LEFT45])
+                    {
+                        //utils::debug_printf("Left 45 sensor detected, rotating -45 degrees...\n");
+                        move_rotational_degrees(-45);
+                        last_move_time = utils::now(); // Update the last move time
+                        on_cooldown = true; // Set the cooldown flag after moving
+                        break; // Exit the switch after moving
+                    }
+
+                    if (sensorData.distanceSensorDetected[SI_RIGHT45])
+                    {
+                        //utils::debug_printf("Right 45 sensor detected, rotating 45 degrees...\n");
+                        move_rotational_degrees(45);
+                        last_move_time = utils::now(); // Update the last move time
+                        on_cooldown = true; // Set the cooldown flag after moving
+                        break; // Exit the switch after moving
+                    }
+
+                    break;
                 }
+            case STATE_PREPARE_ATTACK:
+                {
+                    if (!sensorData.targetDetected)
+                    {
+                        //utils::debug_printf("No target detected, switching to search state...\n");
+                        combat_state = STATE_SEARCH; // If no target is detected, go back to search state
+                        break;
+                    }
 
-                attack_target_last_detected_time = utils::now(); // Update the last detected time of the attack target
+                    if (avg_distance > FRONT_SENSOR_ATTACK_THRESHOLD)
+                    {
+                        //utils::debug_printf("Average distance greater than threshold, switching to approach state...\n");
+                        combat_state = STATE_APPROACH; // If the average distance is greater than the threshold, switch to approach state
+                        break;
+                    }
 
-                set_velocity(ATTACK_VELOCITY, 0.0);// Set a constant velocity to push the oponent
-                last_move_time = utils::now(); // Update the last move time
-                on_cooldown = true; // Set the cooldown flag after moving
-                
-                break;
+                    if (utils::hasElapsed_ms(attack_prepare_start_time, ATTACK_PREPARE_TIME))
+                    {
+                        //utils::debug_printf("Attack preparation time elapsed, switching to attack state...\n");
+                        combat_state = STATE_ATTACK; // Switch to attack state after the preparation time has elapsed
+                        break;
+                    }
+
+                    // Handle prepare attack state
+                    break;
+                }
+            case STATE_ATTACK:
+                {
+                    // Handle attack state
+                    if (!sensorData.targetDetected || avg_distance > FRONT_SENSOR_ATTACK_THRESHOLD)
+                    {
+                        //utils::debug_printf("Target lost or out of range, checking attack timeout...\n");
+                        if (utils::hasElapsed_ms(attack_target_last_detected_time, ATTACK_TIMEOUT))
+                        {
+                            //utils::debug_printf("Attack timed out, canceling move and switching state...\n");
+                            move_cancel();
+                            last_move_time = utils::now(); // Update the last move time
+                            on_cooldown = true; // Set the cooldown flag after moving
+                            combat_state = sensorData.targetDetected ? STATE_APPROACH : STATE_SEARCH; // If the target is lost and attack times out, go back to approach or search state
+                        }
+                    }
+                    else
+                    {
+                        //utils::debug_printf("Target detected, moving forward...\n");
+                        attack_target_last_detected_time = utils::now(); // Update the last detected time of the attack target
+                        move_linear(0.1);
+                        last_move_time = utils::now(); // Update the last move time
+                        on_cooldown = true; // Set the cooldown flag after moving
+                    }
+
+                    break;
+                }
             }
+            //utils::debug_printf("Combat state: %d\n", combat_state);
         }
         else
         {
@@ -322,7 +342,7 @@ void second_core_main(void)
     while (true)
     {
         motion_update();
-        if (display_enabled)
+        //if (display_enabled)
             handle_display();
     }
 }

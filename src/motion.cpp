@@ -21,15 +21,15 @@ constexpr double Ke = NominalMotorVoltage / (NominalMotorRadPerSec * SystemVolta
 
 constexpr double SurfaceSlipCorrection = 5.0; // Correction factor for surface slip, dimensionless
 constexpr double AngularSlipCorrection = 2; // Correction factor for angular slip, dimensionless
-constexpr double LinearAccelerationMiddle = 0.6; //Larger value means less time for acceleration and more for deceleration
-constexpr double AngularAccelerationMiddle = 0.6; //Larger value means less time for acceleration and more for deceleration
+constexpr double LinearAccelerationMiddle = 0.4; //Larger value means less time for acceleration and more for deceleration
+constexpr double AngularAccelerationMiddle = 0.4; //Larger value means less time for acceleration and more for deceleration
 
 constexpr double MaxAcceleration = SurfaceSlipCorrection * NominalMotorRadPerSec * WHEEL_RADIUS; // Maximum linear acceleration of the robot in m/s^2, assuming the motor can reach its nominal speed instantly
-constexpr double MaxDeacceleration = 1.0 * MaxAcceleration;
-constexpr double MaxVelocity = 0.8 * NominalMotorRadPerSec * WHEEL_RADIUS; // Maximum linear velocity of the robot in m/s, assuming the motor can reach its nominal speed instantly
+constexpr double MaxDeacceleration = 2.0 * MaxAcceleration;
+constexpr double MaxVelocity = 0.5 * NominalMotorRadPerSec * WHEEL_RADIUS; // Maximum linear velocity of the robot in m/s, assuming the motor can reach its nominal speed instantly
 constexpr double MaxAngularAcceleration = AngularSlipCorrection * NominalMotorRadPerSec * WHEEL_RADIUS / (WHEEL_BASE / 2.0); // Maximum angular acceleration of the robot in rad/s^2
-constexpr double MaxAngulardeacceleration = 0.6 * MaxAngularAcceleration;
-constexpr double MaxAngularVelocity = 0.8 * NominalMotorRadPerSec * WHEEL_RADIUS / (WHEEL_BASE / 2.0); // Maximum angular velocity of the robot in rad/s
+constexpr double MaxAngulardeacceleration = 2 * MaxAngularAcceleration;
+constexpr double MaxAngularVelocity = 0.5 * NominalMotorRadPerSec * WHEEL_RADIUS / (WHEEL_BASE / 2.0); // Maximum angular velocity of the robot in rad/s
 
 constexpr double G = 9.80665; // Gravity constant in m/s^2, used to convert accelerometer readings from g to m/s^2. The standard value is 9.80665 m/s^2.
 constexpr double a_cutoff = 10.0; //Hz
@@ -51,7 +51,7 @@ bool motors_enabled = false;
 bool move_started = false;
 bool move_complete = true;
 bool move_stopped = true; // Whether the robot stopped before completing the current move
-bool move_type = false; // True for linear move, false for rotational move
+int move_type = 0; // 1 for linear move, 0 for rotational move, 2 constant velocity move
 double move_target_distance = 0.0; // How far the robot should move for the current move, in meters
 double move_target_angle = 0.0; // Target angle for the current move, in radians
 double move_start_distance = 0.0; // Distance at the start of the current move, in meters
@@ -81,7 +81,7 @@ void move_linear(double distance)
     move_started = true;
     move_complete = false;
     move_stopped = false;
-    move_type = true; // Linear move
+    move_type = 1; // Linear move
     move_target_distance = distance;
     move_start_distance = distance_forward;
     move_target_angle = 0;
@@ -100,7 +100,7 @@ void move_rotational(double angle)
     move_started = true;
     move_complete = false;
     move_stopped = false;
-    move_type = false; // Rotational move
+    move_type = 0; // Rotational move
     move_target_angle = angle;
     move_start_angle = orientation.yaw();
     mutex_exit(&motion_data_mutex);
@@ -114,6 +114,18 @@ void move_cancel(void)
     move_started = false;
     move_complete = true;
     move_stopped = true;
+    mutex_exit(&motion_data_mutex);
+}
+
+void move_constant_velocity(double v, double w)
+{
+    mutex_enter_blocking(&motion_data_mutex);
+    move_started = true;
+    move_complete = false;
+    move_stopped = false;
+    move_type = 2; // Constant velocity move
+    target_velocity = v;
+    target_angular_velocity = w;
     mutex_exit(&motion_data_mutex);
 }
 
@@ -173,7 +185,7 @@ void motion_set_motors_enabled(bool enabled)
         move_started = false;
         move_complete = true;
         move_stopped = true;
-        move_type = false;
+        move_type = 0;
     }
     mutex_exit(&motion_data_mutex);
 }
@@ -203,7 +215,7 @@ void motion_reset(void)
     move_started = false;
     move_complete = true;
     move_stopped = true;
-    move_type = false;
+    move_type = 0;
     mutex_exit(&motion_data_mutex);
 }
 
@@ -305,8 +317,11 @@ void motion_update(void)
         mutex_enter_blocking(&motion_data_mutex);
         if (move_started)
         {
-            //utils::debug_printf("Move started: %f, Move start distance: %f, start angle: %f\n", distance_forward, move_start_distance, move_start_angle);
-            if (move_type) // Linear move
+            if (move_type == 2) // Constant velocity move
+            {
+                // No specific distance or angle target, just maintain the target velocities, until canceled
+            }
+            if (move_type == 1) // Linear move
             {
                 double distance_moved = distance_forward - move_start_distance;
                 double distance_remaining = move_target_distance - distance_moved;
@@ -349,7 +364,7 @@ void motion_update(void)
                     //target_angular_velocity = std::max(std::min(heading_correction, MaxAngularVelocity), -MaxAngularVelocity); // Apply heading correction during linear move
                 }
             }
-            else // Rotational move
+            else if (move_type == 0) // Rotational move
             {
                 double angle_turned = vmath::angleDifference(orientation.yaw(), move_start_angle);
                 double angle_remaining = vmath::angleDifference(move_target_angle, angle_turned);

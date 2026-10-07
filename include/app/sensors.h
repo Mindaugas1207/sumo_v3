@@ -8,7 +8,7 @@
 struct SensorData
 {
     std::vector<int> distanceSensorValues;
-    std::vector<bool> distanceSensorDetected;
+    bool distanceSensorDetected[7];
     bool lineSensorLeft;
     bool lineSensorRight;
     bool targetDetected;
@@ -20,6 +20,6 @@ void handle_sensors(void);
 SensorData get_sensor_data(void);
 
 inline constexpr int MAX_DISTANCE = 1000;
-inline constexpr int DETECTION_THRESHOLD = 500;
+inline constexpr int DETECTION_THRESHOLD = 400;
 
 #endif // SENSORS_H

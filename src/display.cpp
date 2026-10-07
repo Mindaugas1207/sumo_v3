@@ -161,6 +161,10 @@ public:
         g.drawText(x + 84, y + textHeight, buffer, -1, -1, Color::White());
         snprintf(buffer, sizeof(buffer), "%d", sensorData.distanceSensorValues[0]);
         g.drawText(x + 112, y + textHeight, buffer, -1, -1, Color::White());
+        if (sensorData.targetDetected)
+        {
+            g.drawText(x + 62, y + textHeight, "|", -1, -1, Color::White());
+        }
     }
 
     bool allowOverlay() const override
@@ -175,6 +179,27 @@ public:
     void draw(Graphics& g) override
     {
         g.drawText(0, TOP_RIBON_SIZE, "Home View", -1, -1, Color::White());
+        char buffer[32];
+        switch (combat_state)
+        {
+            case STATE_SEARCH:
+                snprintf(buffer, sizeof(buffer), "Combat State: SEARCH");
+                break;
+            case STATE_APPROACH:
+                snprintf(buffer, sizeof(buffer), "Combat State: APPROACH");
+                break;
+            case STATE_PREPARE_ATTACK:
+                snprintf(buffer, sizeof(buffer), "Combat State: PREPARE_ATTACK");
+                break;
+            case STATE_ATTACK:
+                snprintf(buffer, sizeof(buffer), "Combat State: ATTACK");
+                break;
+            default:
+                snprintf(buffer, sizeof(buffer), "Combat State: UNKNOWN");
+                break;
+        }
+        g.drawText(0, TOP_RIBON_SIZE + 16, buffer, -1, -1, Color::White());
+        
     }
 
     bool allowOverlay() const override
@@ -187,6 +212,7 @@ public:
 
 MainMenuView mainMenu(graphics, menuItems);
 SensorView sensorView;
+HomeView homeView;
 View* selectedView = nullptr;
 
 void menuNavigate(int direction)
@@ -207,7 +233,7 @@ void menuSelect()
     switch (mainMenu.currentSelection())
     {
         case 0:
-            //selectedView = &homeView;
+            selectedView = &homeView;
             break;
         case 1:
             selectedView = &sensorView;

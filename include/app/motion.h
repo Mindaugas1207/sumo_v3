@@ -28,6 +28,7 @@ void motion_set_motors_enabled(bool enabled);
 void move_linear(double distance);
 void move_rotational_degrees(double angle);
 void move_rotational(double angle);
+void move_constant_velocity(double v, double w);
 bool is_move_complete(void);
 void move_cancel(void);
 void set_velocity(double v, double w);
