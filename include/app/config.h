@@ -76,7 +76,7 @@
 #define I2C_PORT i2c1
 #define I2C_SDA 22
 #define I2C_SCL 23
-#define I2C_SPEED 400000 //400kHz
+#define I2C_SPEED 1000000 //1MHz
 
 #define I2C_PORT2 i2c0
 #define I2C_SDA2 28

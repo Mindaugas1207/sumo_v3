@@ -18,8 +18,8 @@
 
 bool display_enabled = true;
 bool start_state = false;
-constexpr int MOVE_COOLDOWN_MS = 100; // Move cooldown in milliseconds, because sensors internaly are read at this interval
-constexpr int MOVE_TIMEOUT = 200; // Move timeout in milliseconds
+constexpr int MOVE_COOLDOWN_MS = 80; // Move cooldown in milliseconds, because sensors internaly are read at this interval
+constexpr int MOVE_TIMEOUT = 150; // Move timeout in milliseconds
 
 
 // Sensor index definitions for easier reference in the code
@@ -32,8 +32,8 @@ constexpr int SI_LEFT35 = 2;
 constexpr int SI_RIGHT35 = 4;
 
 constexpr int FRONT_SENSOR_ATTACK_THRESHOLD = 100; // Distance threshold for preparing attack in mm
-constexpr int ATTACK_PREPARE_TIME = 300;
-constexpr int ATTACK_TIMEOUT = 100; // Attack timeout in milliseconds
+constexpr int ATTACK_PREPARE_TIME = 150;
+constexpr int ATTACK_TIMEOUT = 120; // Attack timeout in milliseconds
 constexpr double ATTACK_VELOCITY = 0.1;
 constexpr double SEARCH_VELOCITY = 0.2;
 CombatState combat_state = STATE_SEARCH;
@@ -47,7 +47,7 @@ int main()
      //   right_motor.setPower(0.4);
 
     bool line_sensor_triggered = false;
-
+    motion_init();
     
 
     utils::time_t last_move_time = 0;
@@ -55,15 +55,12 @@ int main()
 
     utils::time_t attack_prepare_start_time = 0;
     utils::time_t attack_target_last_detected_time = 0;
-    //sleep_ms(1000);
-    //stdio_init_all();
-    //display_init();
 
     while (true)
     {
-        handle_remote();
-        handle_sensors();
-        STATUS_Led.update();
+        
+        
+        
 
         bool st = gpio_get(START_PIN);
         if (st != start_state)
@@ -81,7 +78,33 @@ int main()
             }
         }
 
+        motion_update();
+
         if (start_state)
+        {
+
+        }
+        else
+        {
+            handle_remote();
+            STATUS_Led.update();
+        }
+
+        handle_display();
+    }
+}
+
+void second_core_main(void)
+{
+    while (true)
+    {
+        handle_sensors();
+    }
+}
+
+
+/*
+if (start_state)
         {
             auto sensorData = get_sensor_data();
             bool line_sensor_left_gpio_state = gpio_get(LINE_SENSOR_LEFT_PIN);
@@ -97,7 +120,7 @@ int main()
                     // Wait until the backward move is complete
                 }
                 sleep_ms(10);
-                move_rotational_degrees(120); // Turn around after moving backward slightly
+                move_rotational_degrees(100); // Turn around after moving backward slightly
                 while (!is_move_complete())
                 {
                     // Wait until the turn is complete
@@ -215,7 +238,7 @@ int main()
                     if (sensorData.distanceSensorDetected[SI_LEFT2p5])
                     {
                         //if only one side sensor detects the target, turn slightly.
-                        move_rotational_degrees(-2.5);
+                        move_rotational_degrees(-5);
                         last_move_time = utils::now(); // Update the last move time
                         on_cooldown = true; // Set the cooldown flag after moving
                         break; // Exit the switch after moving
@@ -224,7 +247,7 @@ int main()
                     if (sensorData.distanceSensorDetected[SI_RIGHT2p5])
                     {
                         //if only one side sensor detects the target, turn slightly.
-                        move_rotational_degrees(2.5);
+                        move_rotational_degrees(5);
                         last_move_time = utils::now(); // Update the last move time
                         on_cooldown = true; // Set the cooldown flag after moving
                         break; // Exit the switch after moving
@@ -232,7 +255,7 @@ int main()
 
                     if (sensorData.distanceSensorDetected[SI_LEFT35])
                     {
-                        move_rotational_degrees(-35);
+                        move_rotational_degrees(-25);
                         last_move_time = utils::now(); // Update the last move time
                         on_cooldown = true; // Set the cooldown flag after moving
                         break; // Exit the switch after moving
@@ -241,7 +264,7 @@ int main()
                     if (sensorData.distanceSensorDetected[SI_RIGHT35])
                     {
                         utils::debug_printf("Right 35 sensor detected, rotating 35 degrees...\n");
-                        move_rotational_degrees(35);
+                        move_rotational_degrees(25);
                         last_move_time = utils::now(); // Update the last move time
                         on_cooldown = true; // Set the cooldown flag after moving
                         break; // Exit the switch after moving
@@ -250,7 +273,7 @@ int main()
                     if (sensorData.distanceSensorDetected[SI_LEFT45])
                     {
                         //utils::debug_printf("Left 45 sensor detected, rotating -45 degrees...\n");
-                        move_rotational_degrees(-45);
+                        move_rotational_degrees(-35);
                         last_move_time = utils::now(); // Update the last move time
                         on_cooldown = true; // Set the cooldown flag after moving
                         break; // Exit the switch after moving
@@ -259,7 +282,7 @@ int main()
                     if (sensorData.distanceSensorDetected[SI_RIGHT45])
                     {
                         //utils::debug_printf("Right 45 sensor detected, rotating 45 degrees...\n");
-                        move_rotational_degrees(45);
+                        move_rotational_degrees(35);
                         last_move_time = utils::now(); // Update the last move time
                         on_cooldown = true; // Set the cooldown flag after moving
                         break; // Exit the switch after moving
@@ -312,7 +335,7 @@ int main()
                     {
                         //utils::debug_printf("Target detected, moving forward...\n");
                         attack_target_last_detected_time = utils::now(); // Update the last detected time of the attack target
-                        move_linear(0.1);
+                        move_constant_velocity(0.6, 0.0);
                         last_move_time = utils::now(); // Update the last move time
                         on_cooldown = true; // Set the cooldown flag after moving
                     }
@@ -326,29 +349,7 @@ int main()
         {
             combat_state = STATE_SEARCH;
         }
-
-        
-
-        //int driver_enable = gpio_get(MOTOR_DRIVER_ENABLE);
-        //int start = gpio_get(START_PIN);
-        //utils::debug_printf("Driver enable: %d, Start: %d\n", driver_enable, start);
-    }
-}
-
-void second_core_main(void)
-{
-    motion_init();
-
-    while (true)
-    {
-        motion_update();
-        //if (display_enabled)
-            handle_display();
-    }
-}
-
-
-
+*/
 
 
 

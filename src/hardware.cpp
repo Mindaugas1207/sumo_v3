@@ -136,8 +136,8 @@ constexpr LineSensor::config line_sensor_configs[num_line_sensors] = {
     //line_sensor_config, //back
 };
 
-PicoI2CBus i2c_bus(I2C_PORT, I2C_SPEED, I2C_SCL, I2C_SDA, true);
-PicoI2CBus i2c_bus2(I2C_PORT2, I2C_SPEED, I2C_SCL2, I2C_SDA2, true);
+PicoI2CBus i2c_bus(I2C_PORT, I2C_SPEED, I2C_SCL, I2C_SDA, false);
+PicoI2CBus i2c_bus2(I2C_PORT2, I2C_SPEED2, I2C_SCL2, I2C_SDA2, true);
 PioOneWireSerial pio_serial(pio0, 0, 1);
 
 PioWS2812 STATUS_Led(pio2, 0, LED_PIN);
