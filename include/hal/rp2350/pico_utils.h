@@ -32,17 +32,17 @@ namespace utils
     {
         return get_absolute_time();
     }
-    inline bool hasElapsed_us(time_t start, time_t duration)
+    inline bool hasElapsed_us(time_t start, time_t duration, time_t now = get_absolute_time())
     {
-        return absolute_time_diff_us(start, get_absolute_time()) >= duration;
+        return absolute_time_diff_us(start, now) >= duration;
     }
-    inline bool hasElapsed_ms(time_t start, time_t duration)
+    inline bool hasElapsed_ms(time_t start, time_t duration, time_t now = get_absolute_time())
     {
-        return absolute_time_diff_us(start, get_absolute_time()) >= duration * 1000;
+        return absolute_time_diff_us(start, now) >= duration * 1000;
     }
-    inline bool hasElapsed_s(time_t start, time_t duration)
+    inline bool hasElapsed_s(time_t start, time_t duration, time_t now = get_absolute_time())
     {
-        return absolute_time_diff_us(start, get_absolute_time()) >= duration * 1000000;
+        return absolute_time_diff_us(start, now) >= duration * 1000000;
     }
     inline void sleep_ms(uint32_t ms)
     {

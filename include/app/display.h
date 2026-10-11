@@ -6,7 +6,6 @@ void handle_display();
 void menuNavigate(int direction);
 void menuToggle();
 void menuSelect();
-void motion_reset(void);
 
 extern Graphics graphics;
 

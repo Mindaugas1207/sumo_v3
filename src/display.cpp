@@ -112,10 +112,41 @@ public:
         int x = 0;
         int y = TOP_RIBON_SIZE;
         int textHeight = g.getFontHeight();
-        MotionData motionData = get_motion_data();
-        SensorData sensorData = get_sensor_data();
+        //MotionData motionData = get_motion_data();
+        //SensorData sensorData = get_sensor_data();
         char buffer[32];
+        snprintf(buffer, sizeof(buffer), "a: %.2f", acceleration);
+        g.drawText(x, y, buffer, -1, -1, Color::White());
+        y += textHeight;
+        snprintf(buffer, sizeof(buffer), "v: %.2f", velocity);
+        g.drawText(x, y, buffer, -1, -1, Color::White());
+        y += textHeight;
+        snprintf(buffer, sizeof(buffer), "d: %.2f", distance);
+        g.drawText(x, y, buffer, -1, -1, Color::White());
+        y += textHeight;
+        snprintf(buffer, sizeof(buffer), "target_v: %.2f", target_v);
+        g.drawText(x, y, buffer, -1, -1, Color::White());
+        y += textHeight;
+        snprintf(buffer, sizeof(buffer), "target_w: %.2f", target_w);
+        g.drawText(x, y, buffer, -1, -1, Color::White());
+        y += textHeight;
+        snprintf(buffer, sizeof(buffer), "target_a: %.2f", target_a);
+        g.drawText(x, y, buffer, -1, -1, Color::White());
+        y += textHeight;
         
+        snprintf(buffer, sizeof(buffer), "max_achieved_velocity: %.2f", max_achieved_velocity);
+        g.drawText(x, y, buffer, -1, -1, Color::White());
+        y += textHeight;
+
+        snprintf(buffer, sizeof(buffer), "max_speed_reached: %s", max_speed_reached ? "Yes" : "No");
+        g.drawText(x, y, buffer, -1, -1, Color::White());
+        y += textHeight;
+        
+        snprintf(buffer, sizeof(buffer), "distance_at_max_velocity: %.2f", distance_at_max_velocity);
+        g.drawText(x, y, buffer, -1, -1, Color::White());
+        y += textHeight;
+
+        /*
         snprintf(buffer, sizeof(buffer), "a: %.2f, %.2f, %.2f", motionData.linear_acceleration.X, motionData.linear_acceleration.Y, motionData.linear_acceleration.Z);
         g.drawText(x, y, buffer, -1, -1, Color::White());
         y += textHeight;
@@ -134,7 +165,8 @@ public:
         snprintf(buffer, sizeof(buffer), "vl: %.2f RPM vr: %.2f RPM", motionData.left_wheel_velocity * 60.0 / (2.0 * M_PI), motionData.right_wheel_velocity * 60.0 / (2.0 * M_PI));
         g.drawText(x, y, buffer, -1, -1, Color::White());
         y += textHeight;
-
+*/  
+/*
         x = 0;
         y = g.getHeight() - textHeight * 2;
 
@@ -165,6 +197,7 @@ public:
         {
             g.drawText(x + 62, y + textHeight, "|", -1, -1, Color::White());
         }
+            */
     }
 
     bool allowOverlay() const override
@@ -213,7 +246,7 @@ public:
 MainMenuView mainMenu(graphics, menuItems);
 SensorView sensorView;
 HomeView homeView;
-View* selectedView = nullptr;
+View* selectedView = &sensorView;
 
 void menuNavigate(int direction)
 {

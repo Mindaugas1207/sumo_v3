@@ -41,20 +41,20 @@ CombatState combat_state = STATE_SEARCH;
 int main()
 {
     hardware_init();
-    sensors_init();
+    //sensors_init();
 
     //left_motor.setPower(0.4);
      //   right_motor.setPower(0.4);
 
-    bool line_sensor_triggered = false;
+    //bool line_sensor_triggered = false;
     motion_init();
     
 
-    utils::time_t last_move_time = 0;
-    bool on_cooldown = false;
+    //utils::time_t last_move_time = 0;
+    //bool on_cooldown = false;
 
-    utils::time_t attack_prepare_start_time = 0;
-    utils::time_t attack_target_last_detected_time = 0;
+    //utils::time_t attack_prepare_start_time = 0;
+    //utils::time_t attack_target_last_detected_time = 0;
 
     while (true)
     {
@@ -62,33 +62,33 @@ int main()
         
         
 
-        bool st = gpio_get(START_PIN);
-        if (st != start_state)
-        {
-            start_state = st;
-            if (start_state)
-            {
-                motion_set_motors_enabled(true);
-                display_enabled = false;
-            }
-            else
-            {
-                motion_set_motors_enabled(false);
-                display_enabled = true;
-            }
-        }
+        //bool st = gpio_get(START_PIN);
+        //if (st != start_state)
+        //{
+        //    start_state = st;
+        //    if (start_state)
+        //    {
+        //        motion_set_motors_enabled(true);
+        //        display_enabled = false;
+        //    }
+        //    else
+        //    {
+        //        motion_set_motors_enabled(false);
+        //        display_enabled = true;
+        //    }
+        //}
 
         motion_update();
+        handle_remote();
+        //if (start_state)
+        //{
 
-        if (start_state)
-        {
-
-        }
-        else
-        {
-            handle_remote();
-            STATUS_Led.update();
-        }
+        //}
+        //else
+        //{
+        //    handle_remote();
+        //    STATUS_Led.update();
+        //}
 
         handle_display();
     }
@@ -98,7 +98,8 @@ void second_core_main(void)
 {
     while (true)
     {
-        handle_sensors();
+        tight_loop_contents();
+        //handle_sensors();
     }
 }
 
