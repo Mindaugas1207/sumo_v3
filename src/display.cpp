@@ -115,10 +115,16 @@ public:
         //MotionData motionData = get_motion_data();
         //SensorData sensorData = get_sensor_data();
         char buffer[32];
-        snprintf(buffer, sizeof(buffer), "a: %.2f", acceleration);
+        //snprintf(buffer, sizeof(buffer), "a: %.2f", acceleration);
+        //g.drawText(x, y, buffer, -1, -1, Color::White());
+        //y += textHeight;
+        //snprintf(buffer, sizeof(buffer), "v: %.2f", velocity);
+        //g.drawText(x, y, buffer, -1, -1, Color::White());
+        //y += textHeight;
+        snprintf(buffer, sizeof(buffer), "heading: %.2f", heading * 180.0 / M_PI);
         g.drawText(x, y, buffer, -1, -1, Color::White());
         y += textHeight;
-        snprintf(buffer, sizeof(buffer), "v: %.2f", velocity);
+        snprintf(buffer, sizeof(buffer), "target_heading: %.2f", target_heading * 180.0 / M_PI);
         g.drawText(x, y, buffer, -1, -1, Color::White());
         y += textHeight;
         snprintf(buffer, sizeof(buffer), "d: %.2f", distance);
@@ -135,10 +141,6 @@ public:
         y += textHeight;
         
         snprintf(buffer, sizeof(buffer), "max_achieved_velocity: %.2f", max_achieved_velocity);
-        g.drawText(x, y, buffer, -1, -1, Color::White());
-        y += textHeight;
-
-        snprintf(buffer, sizeof(buffer), "max_speed_reached: %s", max_speed_reached ? "Yes" : "No");
         g.drawText(x, y, buffer, -1, -1, Color::White());
         y += textHeight;
         

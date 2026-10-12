@@ -17,6 +17,7 @@ class IoInterruptEvent : public Event
         if (gpio < instances.size() && instances[gpio] != nullptr && instances[gpio]->callback != nullptr)
         {
             instances[gpio]->callback(instances[gpio]->context, events);
+            //utils::debug_printf("IoInterruptEvent: GPIO pin %d triggered with events 0x%x\n", gpio, events);
         }
     }
 

@@ -6,7 +6,7 @@
 #include "pico/multicore.h"
 #include "hardware/sync.h"
 #include "pid.h"
-
+/*
 enum class ControlCommands
 {
     DISTANCE, // Command to move a specific distance
@@ -15,7 +15,7 @@ enum class ControlCommands
     ANGULAR_VELOCITY, // Command to move at a specific angular velocity
     BREAK // Command to apply braking function to immediately stop the robot
 };
-
+*/
 constexpr double NominalMotorRPM = 600.0;
 constexpr double NominalMotorVoltage = 6.0;
 constexpr double SystemVoltage = 12.0;
@@ -33,7 +33,7 @@ constexpr double Ka = 0.0; // Acceleration constant, in volts per rad/s^2
 
 
 constexpr double MaxWheelMps = NominalMotorRadPerSec * WHEEL_RADIUS; // Maximum wheel speed in meters per second
-
+constexpr double MinWheelMps = MinMotorRadPerSec * WHEEL_RADIUS; // Minimum wheel speed in meters per second
 
 //Measured values
 //2.0V -> 10-12 rad/s
@@ -50,10 +50,10 @@ constexpr double MaxWheelMps = NominalMotorRadPerSec * WHEEL_RADIUS; // Maximum 
 
 constexpr double MaxAcceleration = 20.0; // Maximum acceleration in m/s^2
 constexpr double MaxDeceleration = 10.0; // Maximum deceleration in m/s^2
-constexpr double MaxVelocity = 2.0; // Maximum velocity in m/s
-constexpr double MaxAngularVelocity = 0.0; // Maximum angular velocity in rad/s
-constexpr double MaxAngularAcceleration = 0.0; // Maximum angular acceleration in rad/s^2
-constexpr double MaxAngularDeceleration = 0.0; // Maximum angular deceleration in rad/s^2
+constexpr double MaxVelocity = 1.0; // Maximum velocity in m/s
+constexpr double MaxAngularVelocity = 40.0; // Maximum angular velocity in rad/s (tune)
+constexpr double MaxAngularAcceleration = 600.0; // Maximum angular acceleration in rad/s^2 (tune)
+constexpr double MaxAngularDeceleration = 200.0; // Maximum angular deceleration in rad/s^2 (tune)
 
 constexpr double G = 9.80665; // Gravity constant in m/s^2, used to convert accelerometer readings from g to m/s^2. The standard value is 9.80665 m/s^2.
 constexpr double a_cutoff = 10.0; //Hz
@@ -91,12 +91,14 @@ double target_w = 0; //desired angular velocity or rotational velocity (of the r
 double target_a = 0; //desired linear acceleration (of the robot) in m/s^2
 double target_alpha = 0; //desired angular acceleration (of the robot) in rad/s^2
 double target_distance = 0.0;//m
-double target_angle = 0.0;//rad
-double test_w = 0.0; // rad/s
-bool move_distance = false;
-bool max_speed_reached = false;
+double target_heading = 0.0;//rad
+bool move = false;
 double max_achieved_velocity = 0.0; // m/s
 double distance_at_max_velocity = 0.0; // m
+
+double heading_offset = 0.0; //rad
+
+double heading = 0.0;
 
 PID pid_wL(0.08, 0.06, 0.0, 0.5, 0.5);
 PID pid_wR(0.08, 0.06, 0.0, 0.5, 0.5);
@@ -107,16 +109,23 @@ void motion_init(void)
     gyroBias = active_config.gyroBias;
 }
 
+void motion_move(double delta_distance, double delta_angle)
+{
+    target_distance = distance + delta_distance;
+    target_heading = vmath::constrainAngle(orientation.yaw() + delta_angle);
+    move = true;
+    max_achieved_velocity = 0.0;
+    distance_at_max_velocity = 0.0;
+}
+
 void motion_test(bool forward)
 {
-    // Example motion test: move forward a short distance
-    move_distance = true;
-    target_distance = 0.5; // Move forward 0.5 meters
-    if(!forward)
-        target_distance = -target_distance;
-        max_speed_reached = false;
-        max_achieved_velocity = 0.0;
-        distance_at_max_velocity = 0.0;
+    motion_move(forward ? 0.5 : -0.5, 0.0);
+}
+
+void motion_turn_test(bool left)
+{
+    motion_move(0.0, left ? 90.0 / 180.0 * M_PI : -90.0 / 180.0 * M_PI);
 }
 
 void motion_zero_position(void)
@@ -125,6 +134,7 @@ void motion_zero_position(void)
     angleR_total = 0.0;
     distanceL = 0.0;
     distanceR = 0.0;
+    heading_offset = orientation.yaw();
 }
 
 void motion_update(void)
@@ -137,17 +147,17 @@ void motion_update(void)
     static double last_wR = 0.0;
     static double last_velocity = 0.0;
     utils::time_t t = utils::now();
-    bool data_ready = imu.isDataReady();
+    bool data_ready = imu.isDataReady() || gpio_get(IMU_INT_PIN); // INT1 is level-latched, so a high pin means unread data even if the edge was missed
     bool timeout = utils::hasElapsed_us(last_compute_time, imu_sample_period_us * 2, t);
 
     if (!(data_ready || timeout)) return;
 
-    vmath::vector3d a;
-    vmath::vector3d w;
+    vmath::vector3d a_imu;
+    vmath::vector3d w_imu;
     double angleL, angleR;
 
     if (!data_ready && timeout) utils::error_printf("Motion: IMU data read timeout\n");
-    if (!imu.readData(a, w))
+    if (!imu.readData(a_imu, w_imu))
     {
         utils::error_printf("Motion: Error reading IMU data\n");
         return;
@@ -167,11 +177,11 @@ void motion_update(void)
     double dt = (t - last_compute_time) / 1000000.0;
     last_compute_time = t;
 
-    a -= accelBias;
-    w -= gyroBias;
-    auto q = imu_filter.compute(w, a, dt);
+    a_imu -= accelBias;
+    w_imu -= gyroBias;
+    auto q = imu_filter.compute(w_imu, a_imu, dt);
     double a_alpha = dt / (a_rc_coef + dt);
-    auto a_filt = a * a_alpha + a_filt_prev * (1.0 - a_alpha);
+    auto a_filt = a_imu * a_alpha + a_filt_prev * (1.0 - a_alpha);
     a_filt_prev = a_filt;
 
     double d_angleL = vmath::angleDifference(angleL, last_angleL);
@@ -195,14 +205,12 @@ void motion_update(void)
     {
         max_achieved_velocity = velocity;
         distance_at_max_velocity = distance;
-        if (max_achieved_velocity >= 1.8)
-            max_speed_reached = true;
     }
     acceleration = (velocity - last_velocity) / dt;
     last_velocity = velocity;
     distance = (distanceL + distanceR) / 2.0;
 
-    stationary = std::abs(a_filt.length() - 1.0) < a_min && std::abs(w.length()) < w_min && std::abs(velocity) < v_min && std::abs(acceleration) < a_min;
+    stationary = std::abs(a_filt.length() - 1.0) < a_min && std::abs(w_imu.length()) < w_min && std::abs(velocity) < v_min && std::abs(acceleration) < a_min;
 
     //Update orientation even when stationary as the madgwic filter keeps maintains stable orientation estimation even without movement.
     orientation = q.eulerAngles(); // Orientation in world frame, referenced to initial orientation at power on, ZYX order (yaw-pitch-roll)
@@ -218,51 +226,95 @@ void motion_update(void)
     {
         auto q_tilt = vmath::quaternion<>::fromRotationZ(-orientation.yaw()) * q; // Remove heading to get tilt-compensated acceleration and angular velocity in the robot-heading-aligned frame
         linear_acceleration = ((q_tilt * a_filt * q_tilt.conjugate()).toVector() - g) * G; // Convert from g to m/s^2 and remove gravity
-        auto new_angular_velocity = (q_tilt * w * q_tilt.conjugate()).toVector(); // Rotate angular velocity to robot-heading-aligned frame, no need to remove gravity since it's a vector and doesn't affect rotation
+        auto new_angular_velocity = (q_tilt * w_imu * q_tilt.conjugate()).toVector(); // Rotate angular velocity to robot-heading-aligned frame, no need to remove gravity since it's a vector and doesn't affect rotation
         angular_acceleration = (new_angular_velocity - angular_velocity) / dt; // Compute angular acceleration in the robot-heading-aligned frame
         angular_velocity = new_angular_velocity; // Update angular velocity
     }
-
-    double remaining_angle = vmath::angleDifference(target_angle, orientation.yaw()); // Remaining angle to the target (method handles wrapping)
-    double stopping_angle = (target_w * target_w) / (2 * MaxAngularDeceleration); // Angle required to stop the robot from current angular velocity
-
-    double remaining_distance = std::abs(target_distance - distance); // Remaining distance to the target
-    int move_direction = (target_distance - distance) > 0 ? 1 : -1; // Determine the direction of movement based on the remaining distance
-    double stopping_distance = std::abs((target_v * target_v) / (2 * MaxDeceleration)); // Distance required to stop the robot from current velocity
+    double w_heading = angular_velocity.yaw();
+    heading = vmath::angleDifference(orientation.yaw(), heading_offset);
+    double remaining_angle = vmath::angleDifference(target_heading, heading); // Remaining angle to the target (method handles wrapping)
+    double stopping_angle = (target_w * target_w) / (MaxAngularDeceleration); // Angle required to stop the robot from current angular velocity
+    stopping_angle = target_w >= 0 ? stopping_angle : -stopping_angle;
 
     
 
-    if (move_distance)
+    double remaining_distance = target_distance - distance;
+    double stopping_distance = (target_v * target_v) / (2 * MaxDeceleration); // Distance required to stop the robot from current velocity
+    stopping_distance = target_v >= 0 ? stopping_distance : -stopping_distance;
+
+    if (move)
     {
-        if (remaining_distance > stopping_distance)
-        {
-            target_a = move_direction * MaxAcceleration ; // Accelerate if we have more distance than stopping distance
-            target_v += target_a * dt;
-        }
-        else if (remaining_distance <= stopping_distance)
-        {
-            target_a = - move_direction * MaxDeceleration; // Decelerate if we have less distance than stopping distance
-            target_v += target_a * dt;
-
-            if (remaining_distance < 0.001 || stationary) // Consider the robot has reached the target if the remaining distance is very small
+       // if (remaining_distance < 0.001 && remaining_angle < 0.01 && stationary)
+       // {
+         //   target_a = 0;
+        //    target_v = 0;
+         //   target_w = 0;
+         //   target_alpha = 0;
+          //  move = false;
+        //}
+        //else
+        ////{
+/*
+            if (remaining_distance > 0.005 && remaining_distance > stopping_distance)
             {
-                target_v = 0;
-                target_a = 0;
-                move_distance = false;
+                target_a = std::clamp(MaxAcceleration * MaxAcceleration * remaining_distance, -MaxAcceleration, MaxAcceleration);
+                target_v += target_a * dt;
             }
-        }
-        
-        
+            else if (remaining_distance < -0.005 && remaining_distance < stopping_distance)
+            {
+                target_a = std::clamp(MaxAcceleration * MaxAcceleration * remaining_distance, -MaxAcceleration, MaxAcceleration);
+                target_v += target_a * dt;
+            }
+            else if (std::abs(velocity) > 0.1) //Decelerate if the velocity is non zero
+            {
+                target_a = velocity > 0 ? -MaxDeceleration : MaxDeceleration;
+                target_v += target_a * dt;
+            }
+            else*/
+            {
+                target_a = 0;
+                target_v = 0;
+            }
+ 
+            //utils::debug_printf("remaining_angle: %f, stopping_angle: %f, target_w: %f, w_heading: %f\n", remaining_angle, stopping_angle, target_w, w_heading);
 
-        
+            if (remaining_angle > 0.1 && remaining_angle > stopping_angle)
+            {
+                target_alpha = MaxAngularAcceleration;
+                target_w += target_alpha * dt;
+            }
+            else if (remaining_angle < -0.1 && remaining_angle < stopping_angle)
+            {
+                target_alpha = -MaxAngularAcceleration;
+                target_w += target_alpha * dt;
+            }
+            else if (remaining_angle > 0.1 && remaining_angle <= stopping_angle)
+            {
+                target_alpha = -MaxAngularDeceleration;
+                target_w += target_alpha * dt;
+            }
+            else if (remaining_angle < -0.1 && remaining_angle >= stopping_angle)
+            {
+                target_alpha = MaxAngularDeceleration;
+                target_w += target_alpha * dt;
+            }
+            else
+            {
+                target_alpha = 0;
+                target_w = 0;
+            }
+        //}
     }
     else
     {
-        target_a = 0; // No acceleration if not moving a specific distance
-        target_v = 0; // No velocity if not moving a specific distance
+        target_a = 0;
+        target_v = 0;
+        target_w = 0;
+        target_alpha = 0;
     }
     
     target_v = std::clamp(target_v, -MaxVelocity, MaxVelocity); // Clamp target velocity to the maximum allowed velocity
+    target_w = std::clamp(target_w, -MaxAngularVelocity, MaxAngularVelocity); // Clamp target angular velocity to the maximum allowed angular velocity
 
     double target_wL = (target_v - target_w * WHEEL_BASE / 2.0) / WHEEL_RADIUS; //desired angular velocity for left wheel
     double target_wR = (target_v + target_w * WHEEL_BASE / 2.0) / WHEEL_RADIUS; //desired angular velocity for right wheel

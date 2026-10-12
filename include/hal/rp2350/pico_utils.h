@@ -60,12 +60,12 @@ namespace utils
 
     inline void enter_critical_section()
     {
-        critical_section_enter_blocking(&cs);
+        //critical_section_enter_blocking(&cs);
     }
 
     inline void exit_critical_section()
     {
-        critical_section_exit(&cs);
+        //critical_section_exit(&cs);
     }
 
     inline void debug_enable(bool enable)

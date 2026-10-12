@@ -67,24 +67,18 @@ void handle_remote(void)
         case IrCommand::VOLUP:
             if (repeat) break;
             motion_test(true); // Run motion test when VOLUP is pressed
-            //if (!is_move_complete()) break; // prevent starting a new move before the previous one is complete
-            //move_linear(0.3); // Example: move forward by 10cm
             break;
         case IrCommand::VOLDOWN:
             if (repeat) break;
             motion_test(false); // Run motion test when VOLDOWN is pressed
-            //if (!is_move_complete()) break; // prevent starting a new move before the previous one is complete
-            //move_linear(-0.3); // Example: move backward by 10cm
             break;
         case IrCommand::CHUP:
             if (repeat) break;
-            //if (!is_move_complete()) break; // prevent starting a new move before the previous one is complete
-            //move_rotational_degrees(90); // Example: rotate clockwise by 90 degrees
+            motion_turn_test(true); // Run turn test when CHUP is pressed
             break;
         case IrCommand::CHDOWN:
             if (repeat) break;
-            //if (!is_move_complete()) break; // prevent starting a new move before the previous one is complete
-            //move_rotational_degrees(-90); // Example: rotate counterclockwise by 90 degrees
+            motion_turn_test(false); // Run turn test when CHDOWN is pressed
             break;
         case IrCommand::MP:
             if (repeat) break;
