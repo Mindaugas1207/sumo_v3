@@ -74,7 +74,8 @@ void handle_remote(void)
             break;
         case IrCommand::CHUP:
             if (repeat) break;
-            motion_turn_test(true); // Run turn test when CHUP is pressed
+            motion_ka_test(); // Run Ka step-response test when CHUP is pressed
+            //motion_turn_test(true); // Run turn test when CHUP is pressed
             break;
         case IrCommand::CHDOWN:
             if (repeat) break;

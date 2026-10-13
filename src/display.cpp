@@ -136,15 +136,25 @@ public:
         snprintf(buffer, sizeof(buffer), "target_w: %.2f", target_w);
         g.drawText(x, y, buffer, -1, -1, Color::White());
         y += textHeight;
-        snprintf(buffer, sizeof(buffer), "target_a: %.2f", target_a);
+        //snprintf(buffer, sizeof(buffer), "target_a: %.2f", target_a);
+        //g.drawText(x, y, buffer, -1, -1, Color::White());
+        //y += textHeight;
+        
+       // snprintf(buffer, sizeof(buffer), "max_achieved_velocity: %.2f", max_achieved_velocity);
+       // g.drawText(x, y, buffer, -1, -1, Color::White());
+       // y += textHeight;
+        
+        //snprintf(buffer, sizeof(buffer), "distance_at_max_velocity: %.2f", distance_at_max_velocity);
+        //g.drawText(x, y, buffer, -1, -1, Color::White());
+        //y += textHeight;
+
+        //snprintf(buffer, sizeof(buffer), "sat:%d err:%.2f slip:%.2f", voltage_saturated, max_tracking_error, max_slip_accel);
         g.drawText(x, y, buffer, -1, -1, Color::White());
         y += textHeight;
-        
-        snprintf(buffer, sizeof(buffer), "max_achieved_velocity: %.2f", max_achieved_velocity);
+        snprintf(buffer, sizeof(buffer), "w_ss: %.2f tau: %.4f", ka_test_w_ss, ka_test_tau);
         g.drawText(x, y, buffer, -1, -1, Color::White());
         y += textHeight;
-        
-        snprintf(buffer, sizeof(buffer), "distance_at_max_velocity: %.2f", distance_at_max_velocity);
+        snprintf(buffer, sizeof(buffer), "Kv: %.4f Ka: %.5f", ka_test_Kv_meas, ka_test_Ka_meas);
         g.drawText(x, y, buffer, -1, -1, Color::White());
         y += textHeight;
 
