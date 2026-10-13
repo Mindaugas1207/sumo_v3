@@ -29,11 +29,18 @@ constexpr double WHEEL_BASE = 0.06; // Distance between the wheels in meters
 
 constexpr double Ks = 1.0; // Static friction voltage constant, in volts
 constexpr double Kv = 0.0937; // Velocity constant, in volts per rad/s
-constexpr double Ka = 0.0; // Acceleration constant, in volts per rad/s^2
+constexpr double Ka = 0.015; // Acceleration constant, in volts per rad/s^2
 
 
 constexpr double MaxWheelMps = NominalMotorRadPerSec * WHEEL_RADIUS; // Maximum wheel speed in meters per second
 constexpr double MinWheelMps = MinMotorRadPerSec * WHEEL_RADIUS; // Minimum wheel speed in meters per second
+
+// Voltage-limited model: V = Ks + Kv*w + Ka*alpha. Accel/decel limits are 0 if Ka is not set.
+constexpr double VoltageLimitedMaxWheelRadPerSec = (SystemVoltage - Ks) / Kv; // Steady-state speed at full voltage, in rad/s
+constexpr double VoltageLimitedMaxVelocity = VoltageLimitedMaxWheelRadPerSec * WHEEL_RADIUS; // in m/s
+constexpr double VoltageLimitedMaxAcceleration = Ka > 0.0 ? (SystemVoltage - Ks) / Ka * WHEEL_RADIUS : 0.0; // From standstill, in m/s^2
+constexpr double VoltageLimitedMinDeceleration = Ka > 0.0 ? (SystemVoltage + Ks) / Ka * WHEEL_RADIUS : 0.0; // Full reverse voltage near standstill (worst case), in m/s^2
+constexpr double VoltageLimitedMaxDeceleration = Ka > 0.0 ? (SystemVoltage + Ks + Kv * VoltageLimitedMaxWheelRadPerSec) / Ka * WHEEL_RADIUS : 0.0; // Full reverse voltage at top speed, back-EMF adds to braking (best case), in m/s^2
 
 //Measured values
 //2.0V -> 10-12 rad/s
@@ -49,7 +56,7 @@ constexpr double MinWheelMps = MinMotorRadPerSec * WHEEL_RADIUS; // Minimum whee
 //12.0V -> 119-125 rad/s
 
 constexpr double MaxAcceleration = 20.0; // Maximum acceleration in m/s^2
-constexpr double MaxDeceleration = 10.0; // Maximum deceleration in m/s^2
+constexpr double MaxDeceleration = 10; // Maximum deceleration in m/s^2
 constexpr double MaxVelocity = 1.0; // Maximum velocity in m/s
 constexpr double MaxAngularVelocity = 40.0; // Maximum angular velocity in rad/s (tune)
 constexpr double MaxAngularAcceleration = 600.0; // Maximum angular acceleration in rad/s^2 (tune)
@@ -230,54 +237,41 @@ void motion_update(void)
         angular_acceleration = (new_angular_velocity - angular_velocity) / dt; // Compute angular acceleration in the robot-heading-aligned frame
         angular_velocity = new_angular_velocity; // Update angular velocity
     }
-    double w_heading = angular_velocity.yaw();
+    //double w_heading = angular_velocity.yaw();
     heading = vmath::angleDifference(orientation.yaw(), heading_offset);
-    double remaining_angle = vmath::angleDifference(target_heading, heading); // Remaining angle to the target (method handles wrapping)
-    double stopping_angle = (target_w * target_w) / (MaxAngularDeceleration); // Angle required to stop the robot from current angular velocity
-    stopping_angle = target_w >= 0 ? stopping_angle : -stopping_angle;
+    //double remaining_angle = vmath::angleDifference(target_heading, heading); // Remaining angle to the target (method handles wrapping)
+    //double stopping_angle = (target_w * target_w) / (MaxAngularDeceleration); // Angle required to stop the robot from current angular velocity
+    //stopping_angle = target_w >= 0 ? stopping_angle : -stopping_angle;
 
     
 
     double remaining_distance = target_distance - distance;
-    double stopping_distance = (target_v * target_v) / (2 * MaxDeceleration); // Distance required to stop the robot from current velocity
-    stopping_distance = target_v >= 0 ? stopping_distance : -stopping_distance;
+
+    //double motors_w_avg = (wL + wR) / 2.0;
+    //double motors_bemf_avg = std::min(Kv * std::abs(motors_w_avg), SystemVoltage - Ks); // Ks is already part of MinDeceleration
+    //double possible_deceleration = (motors_bemf_avg / (SystemVoltage - Ks)) * (VoltageLimitedMaxDeceleration - VoltageLimitedMinDeceleration) + VoltageLimitedMinDeceleration;
 
     if (move)
     {
-       // if (remaining_distance < 0.001 && remaining_angle < 0.01 && stationary)
-       // {
-         //   target_a = 0;
-        //    target_v = 0;
-         //   target_w = 0;
-         //   target_alpha = 0;
-          //  move = false;
-        //}
-        //else
-        ////{
-/*
-            if (remaining_distance > 0.005 && remaining_distance > stopping_distance)
-            {
-                target_a = std::clamp(MaxAcceleration * MaxAcceleration * remaining_distance, -MaxAcceleration, MaxAcceleration);
-                target_v += target_a * dt;
-            }
-            else if (remaining_distance < -0.005 && remaining_distance < stopping_distance)
-            {
-                target_a = std::clamp(MaxAcceleration * MaxAcceleration * remaining_distance, -MaxAcceleration, MaxAcceleration);
-                target_v += target_a * dt;
-            }
-            else if (std::abs(velocity) > 0.1) //Decelerate if the velocity is non zero
-            {
-                target_a = velocity > 0 ? -MaxDeceleration : MaxDeceleration;
-                target_v += target_a * dt;
-            }
-            else*/
+            // Fastest speed from which we can still stop within the remaining distance; sign points toward the target.
+            double v_limit = std::min(MaxVelocity, std::sqrt(2.0 * MaxDeceleration * std::abs(remaining_distance))); // Worst case, since braking weakens as the robot slows
+            double v_desired = remaining_distance >= 0 ? v_limit : -v_limit;
+
+            // Slew toward v_desired: brake rate when reducing speed or reversing, accel rate when speeding up.
+            bool speeding_up = std::abs(v_desired) > std::abs(target_v) && (v_desired * target_v >= 0);
+            double max_step = (speeding_up ? MaxAcceleration : MaxDeceleration) * dt;
+            double step = std::clamp(v_desired - target_v, -max_step, max_step);
+            target_v += step;
+            target_a = step / dt;
+
+            if (std::abs(remaining_distance) < 0.005 && std::abs(velocity) < 0.05)
             {
                 target_a = 0;
                 target_v = 0;
             }
  
             //utils::debug_printf("remaining_angle: %f, stopping_angle: %f, target_w: %f, w_heading: %f\n", remaining_angle, stopping_angle, target_w, w_heading);
-
+/*
             if (remaining_angle > 0.1 && remaining_angle > stopping_angle)
             {
                 target_alpha = MaxAngularAcceleration;
@@ -303,7 +297,7 @@ void motion_update(void)
                 target_alpha = 0;
                 target_w = 0;
             }
-        //}
+*/
     }
     else
     {
@@ -313,7 +307,9 @@ void motion_update(void)
         target_alpha = 0;
     }
     
-    target_v = std::clamp(target_v, -MaxVelocity, MaxVelocity); // Clamp target velocity to the maximum allowed velocity
+    double clamped_v = std::clamp(target_v, -MaxVelocity, MaxVelocity); // Clamp target velocity to the maximum allowed velocity
+    if (clamped_v != target_v) target_a = 0; // No acceleration feedforward while saturated
+    target_v = clamped_v;
     target_w = std::clamp(target_w, -MaxAngularVelocity, MaxAngularVelocity); // Clamp target angular velocity to the maximum allowed angular velocity
 
     double target_wL = (target_v - target_w * WHEEL_BASE / 2.0) / WHEEL_RADIUS; //desired angular velocity for left wheel
