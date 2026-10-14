@@ -15,6 +15,25 @@ class PID
 {
     T lastError = 0;
     T integral = 0;
+    bool hasLast = false;
+
+    T update(T error, T errorChange, T dt)
+    {
+        T proportional = kp * error;
+        T derivative = hasLast ? errorChange * kd / dt : 0; // No derivative on the first sample after a reset
+        T candidate = std::clamp(integral + error * ki * dt, -integralLimit, integralLimit);
+
+        T unsaturated = proportional + candidate + derivative;
+        T output = std::clamp(unsaturated, -outputLimit, outputLimit);
+
+        // Hold the integral while the output is saturated and the error would push it further in
+        bool windingUp = (unsaturated > outputLimit && error > 0) || (unsaturated < -outputLimit && error < 0);
+        if (!windingUp) integral = candidate;
+
+        lastError = error;
+        hasLast = true;
+        return output;
+    }
 public:
     T kp;
     T ki;
@@ -42,14 +61,7 @@ public:
     T compute(T sp, T pv, T dt)
     {
         T error = sp - pv;
-
-        T proportional = kp * error;
-        integral = std::clamp(integral + error * ki * dt, -integralLimit, integralLimit);
-        T derivative = (error - lastError) * kd / dt;
-
-        T output = std::clamp(proportional + integral + derivative, -outputLimit, outputLimit);
-        lastError = error;
-        return output;
+        return update(error, error - lastError, dt);
     }
 
     /*! @brief Compute the PID output for angles in radians. Unwraps the error to be continuous over the -pi to pi range.
@@ -61,14 +73,7 @@ public:
     T compute_radians(T sp, T pv, T dt)
     {
         T error = vmath::unwrapAngle(sp - pv);
-
-        T proportional = kp * error;
-        integral = std::clamp(integral + error * ki * dt, -integralLimit, integralLimit);
-        T derivative = vmath::unwrapAngle(error - lastError) * kd / dt;
-        
-        T output = std::clamp(proportional + integral + derivative, -outputLimit, outputLimit);
-        lastError = error;
-        return output;
+        return update(error, vmath::unwrapAngle(error - lastError), dt);
     }
 
     /*! @brief Compute the PID output for angles in degrees. Unwraps the error to be continuous over the -180 to 180 range.
@@ -80,14 +85,7 @@ public:
     T compute_degrees(T sp, T pv, T dt)
     {
         T error = vmath::unwrapAngleDegrees(sp - pv);
-
-        T proportional = kp * error;
-        integral = std::clamp(integral + error * ki * dt, -integralLimit, integralLimit);
-        T derivative = vmath::unwrapAngleDegrees(error - lastError) * kd / dt;
-        
-        T output = std::clamp(proportional + integral + derivative, -outputLimit, outputLimit);
-        lastError = error;
-        return output;
+        return update(error, vmath::unwrapAngleDegrees(error - lastError), dt);
     }
 
     /*! @brief Reset the PID controller.
@@ -97,6 +95,7 @@ public:
     {
         lastError = 0;
         integral = 0;
+        hasLast = false;
     }
 };
 

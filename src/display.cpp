@@ -151,12 +151,13 @@ public:
         //snprintf(buffer, sizeof(buffer), "sat:%d err:%.2f slip:%.2f", voltage_saturated, max_tracking_error, max_slip_accel);
         g.drawText(x, y, buffer, -1, -1, Color::White());
         y += textHeight;
-        snprintf(buffer, sizeof(buffer), "w_ss: %.2f tau: %.4f", ka_test_w_ss, ka_test_tau);
-        g.drawText(x, y, buffer, -1, -1, Color::White());
-        y += textHeight;
-        snprintf(buffer, sizeof(buffer), "Kv: %.4f Ka: %.5f", ka_test_Kv_meas, ka_test_Ka_meas);
-        g.drawText(x, y, buffer, -1, -1, Color::White());
-        y += textHeight;
+        static const char* ka_test_labels[4] = {"LF", "LR", "RF", "RR"};
+        for (int i = 0; i < 4; i++)
+        {
+            snprintf(buffer, sizeof(buffer), "%s Kv:%.4f Ka:%.5f", ka_test_labels[i], ka_test_results[i].Kv, ka_test_results[i].Ka);
+            g.drawText(x, y, buffer, -1, -1, Color::White());
+            y += textHeight;
+        }
 
         /*
         snprintf(buffer, sizeof(buffer), "a: %.2f, %.2f, %.2f", motionData.linear_acceleration.X, motionData.linear_acceleration.Y, motionData.linear_acceleration.Z);

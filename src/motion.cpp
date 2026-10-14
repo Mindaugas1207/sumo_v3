@@ -28,9 +28,24 @@ constexpr double WHEEL_RADIUS = 0.030 / 2.0; // Wheel radius in meters
 constexpr double WHEEL_BASE = 0.06; // Distance between the wheels in meters
 
 constexpr double Ks = 1.0; // Static friction voltage constant, in volts
-constexpr double Kv = 0.0937; // Velocity constant, in volts per rad/s
-constexpr double Ka = 0.0034; // Acceleration constant, in volts per rad/s^2
+constexpr double Kv = 0.0955; // Velocity constant, in volts per rad/s
+constexpr double Ka = 0.0016;//0.0034; // Acceleration constant, in volts per rad/s^2
+struct MotorModel
+{
+    double Ks; // V
+    double Kv; // V per rad/s
+    double Ka; // V per rad/s^2
+};
 
+struct MotorConstants
+{
+    MotorModel forward;
+    MotorModel reverse;
+};
+
+// Per-motor, per-direction feedforward constants; all start equal to the shared values above, tune individually.
+constexpr MotorConstants LeftMotorModel = {{Ks, Kv, Ka}, {Ks + 0.1, Kv, Ka}};
+constexpr MotorConstants RightMotorModel = {{Ks, Kv, Ka}, {Ks, Kv, Ka}};
 
 constexpr double MaxWheelMps = NominalMotorRadPerSec * WHEEL_RADIUS; // Maximum wheel speed in meters per second
 constexpr double MinWheelMps = MinMotorRadPerSec * WHEEL_RADIUS; // Minimum wheel speed in meters per second
@@ -55,14 +70,24 @@ constexpr double VoltageLimitedMaxDeceleration = Ka > 0.0 ? (SystemVoltage + Ks 
 //11.0V -> 99-110 rad/s
 //12.0V -> 119-125 rad/s
 
-constexpr double MaxAcceleration = 10.0; // Maximum acceleration in m/s^2
-constexpr double MaxDeceleration = 10.0; // Maximum deceleration in m/s^2
-constexpr double DecelPlanMargin = 0.8; // Plan braking at this fraction of MaxDeceleration so there is headroom to correct
+constexpr double DecelPlanMargin = 0.8; // Plan braking at this fraction of the deceleration limit so there is headroom to correct
 constexpr double PositionKp = 20.0; // 1/s, caps v_desired near the target so the sqrt profile's infinite slope doesn't cause chatter
 constexpr double MaxVelocity = 0.9 * VoltageLimitedMaxVelocity; // Maximum velocity in m/s, 10% voltage headroom left for the PID
+
+struct MotionLimits
+{
+    double acceleration; // Speeding up in this direction of travel, m/s^2
+    double deceleration; // Braking while travelling in this direction, m/s^2
+    double velocity; // Top speed in this direction, m/s
+};
+
+// Wheels are at the rear and the centre of mass is forward, so grip differs by direction of travel and by speeding up vs braking.
+constexpr MotionLimits ForwardLimits = {10.0, 10.0, MaxVelocity};
+constexpr MotionLimits ReverseLimits = {10.0, 10.0, MaxVelocity};
 constexpr double MaxAngularVelocity = 40.0; // Maximum angular velocity in rad/s (tune)
 constexpr double MaxAngularAcceleration = 600.0; // Maximum angular acceleration in rad/s^2 (tune)
 constexpr double MaxAngularDeceleration = 200.0; // Maximum angular deceleration in rad/s^2 (tune)
+constexpr double HeadingMaxW = 2.0; // rad/s, limits the heading correction so a wheel that can't follow doesn't wind it into a spin
 
 constexpr double G = 9.80665; // Gravity constant in m/s^2, used to convert accelerometer readings from g to m/s^2. The standard value is 9.80665 m/s^2.
 constexpr double a_cutoff = 10.0; //Hz
@@ -102,6 +127,7 @@ double target_alpha = 0; //desired angular acceleration (of the robot) in rad/s^
 double target_distance = 0.0;//m
 double target_heading = 0.0;//rad
 bool move = false;
+bool hold_heading = false; // True for straight moves (no commanded turn)
 double max_achieved_velocity = 0.0; // m/s
 double distance_at_max_velocity = 0.0; // m
 bool voltage_saturated = false; // Latched during a move if a commanded wheel voltage exceeded SystemVoltage
@@ -112,8 +138,9 @@ double heading_offset = 0.0; //rad
 
 double heading = 0.0;
 
-PID pid_wL(0.08, 0.06, 0.0, 0.5, 0.5);
-PID pid_wR(0.08, 0.06, 0.0, 0.5, 0.5);
+PID pid_wL(0.05, 1.0, 0.0, 0.5, 1.0);
+PID pid_wR(0.05, 1.0, 0.0, 0.5, 1.0);
+PID pid_heading(8.0, 1.0, 0.0, 0.5, HeadingMaxW); // Heading error in rad, output is target_w in rad/s
 
 void motion_init(void)
 {
@@ -126,6 +153,8 @@ void motion_move(double delta_distance, double delta_angle)
     target_distance = distance + delta_distance;
     target_heading = vmath::constrainAngle(orientation.yaw() + delta_angle);
     move = true;
+    hold_heading = (delta_angle == 0.0);
+    pid_heading.reset();
     max_achieved_velocity = 0.0;
     distance_at_max_velocity = 0.0;
     voltage_saturated = false;
@@ -143,34 +172,53 @@ void motion_turn_test(bool left)
     motion_move(0.0, left ? 90.0 / 180.0 * M_PI : -90.0 / 180.0 * M_PI);
 }
 
-// Ka step-response test: apply a voltage step from rest, then fit tau = Ka/Kv from the speed rise (w = w_ss * (1 - exp(-t/tau))).
+// Ka step-response test: for each motor and direction in turn, apply a voltage step from rest to that motor alone,
+// then fit tau = Ka/Kv from the speed rise (w = w_ss * (1 - exp(-t/tau))). Run with the wheels free.
 constexpr double KaTestVoltage = 6.0; // Volts, keep well below SystemVoltage so the rise is slow enough to sample
 constexpr double KaTestDuration = 0.6; // Seconds, several time constants
+constexpr double KaTestSettleTime = 0.5; // Seconds with the motors off between runs so the wheel stops
 constexpr size_t KaTestMaxSamples = 1024;
-static bool ka_test_active = false;
+constexpr int KaTestRuns = 4; // left forward, left reverse, right forward, right reverse
+static int ka_test_run = -1; // -1 when idle
+static bool ka_test_settling = false;
 static double ka_test_time = 0.0;
 static size_t ka_test_count = 0;
 static float ka_test_t[KaTestMaxSamples];
 static float ka_test_w[KaTestMaxSamples];
 
-double ka_test_w_ss = 0.0; // rad/s
-double ka_test_tau = 0.0; // s, -1 if 63.2% was never reached
-double ka_test_Kv_meas = 0.0; // V/(rad/s)
-double ka_test_Ka = 0.0; // Kv * tau
-double ka_test_Ka_meas = 0.0; // Kv_meas * tau
+KaTestResult ka_test_results[KaTestRuns];
 
 void motion_ka_test(void)
 {
     move = false;
+    ka_test_run = 0;
+    ka_test_settling = false;
     ka_test_time = 0.0;
     ka_test_count = 0;
-    ka_test_active = true;
 }
 
-// Returns true while the test owns the motors; V is the voltage to apply to both.
-static bool ka_test_step(double dt, double w_avg, double& V)
+// Returns true while the test owns the motors; VL and VR are the voltages to apply.
+static bool ka_test_step(double dt, double wL, double wR, double& VL, double& VR)
 {
-    if (!ka_test_active) return false;
+    if (ka_test_run < 0) return false;
+
+    VL = VR = 0.0;
+    if (ka_test_settling)
+    {
+        ka_test_time += dt;
+        if (ka_test_time >= KaTestSettleTime)
+        {
+            ka_test_settling = false;
+            ka_test_time = 0.0;
+            ka_test_count = 0;
+        }
+        return true;
+    }
+
+    bool right = ka_test_run >= 2;
+    bool reverse = (ka_test_run & 1) != 0;
+    double sign = reverse ? -1.0 : 1.0;
+    double w_avg = sign * (right ? wR : wL); // Positive in the driven direction
 
     if (ka_test_time < KaTestDuration && ka_test_count < KaTestMaxSamples)
     {
@@ -178,42 +226,51 @@ static bool ka_test_step(double dt, double w_avg, double& V)
         ka_test_w[ka_test_count] = w_avg;
         ka_test_count++;
         ka_test_time += dt;
-        V = KaTestVoltage;
+        (right ? VR : VL) = sign * KaTestVoltage;
         return true;
     }
 
-    ka_test_active = false;
-    V = 0.0;
-    if (ka_test_count < 10) return false;
-
-    // Steady-state speed from the last 10% of samples
-    size_t tail = ka_test_count / 10;
-    double w_ss = 0.0;
-    for (size_t i = ka_test_count - tail; i < ka_test_count; i++) w_ss += ka_test_w[i];
-    w_ss /= tail;
-
-    // Time to reach 63.2% of steady state, interpolated
-    double target = 0.632 * w_ss;
-    double tau = -1.0;
-    for (size_t i = 1; i < ka_test_count; i++)
+    KaTestResult& result = ka_test_results[ka_test_run];
+    result = {0.0, -1.0, 0.0, 0.0};
+    if (ka_test_count >= 10)
     {
-        if (ka_test_w[i] >= target)
+
+        // Steady-state speed from the last 10% of samples
+        size_t tail = ka_test_count / 10;
+        double w_ss = 0.0;
+        for (size_t i = ka_test_count - tail; i < ka_test_count; i++) w_ss += ka_test_w[i];
+        w_ss /= tail;
+
+        // Time to reach 63.2% of steady state, interpolated
+        double target = 0.632 * w_ss;
+        double tau = -1.0;
+        for (size_t i = 1; i < ka_test_count; i++)
         {
-            double f = (target - ka_test_w[i - 1]) / (ka_test_w[i] - ka_test_w[i - 1]);
-            tau = ka_test_t[i - 1] + f * (ka_test_t[i] - ka_test_t[i - 1]);
-            break;
+            if (ka_test_w[i] >= target && ka_test_w[i] > ka_test_w[i - 1])
+            {
+                double f = (target - ka_test_w[i - 1]) / (ka_test_w[i] - ka_test_w[i - 1]);
+                tau = ka_test_t[i - 1] + f * (ka_test_t[i] - ka_test_t[i - 1]);
+                break;
+            }
         }
+
+        const MotorConstants& motor = right ? RightMotorModel : LeftMotorModel;
+        double Ks_model = (reverse ? motor.reverse : motor.forward).Ks;
+        double Kv_meas = w_ss > 0.0 ? (KaTestVoltage - Ks_model) / w_ss : 0.0;
+        result = {w_ss, tau, Kv_meas, Kv_meas * tau};
+        utils::debug_printf("Ka test %c%c: w_ss=%.2f rad/s, tau=%.4f s, Kv=%.4f, Ka=%.5f\n",
+            right ? 'R' : 'L', reverse ? 'R' : 'F', w_ss, tau, Kv_meas, Kv_meas * tau);
     }
 
-    double Kv_meas = (KaTestVoltage - Ks) / w_ss;
-    ka_test_w_ss = w_ss;
-    ka_test_tau = tau;
-    ka_test_Kv_meas = Kv_meas;
-    ka_test_Ka = Kv * tau;
-    ka_test_Ka_meas = Kv_meas * tau;
-    utils::debug_printf("Ka test: V=%.2f, w_ss=%.2f rad/s, tau=%.4f s, Kv_meas=%.4f, Ka=%.5f (using Kv_meas: %.5f)\n",
-        KaTestVoltage, w_ss, tau, Kv_meas, Kv * tau, Kv_meas * tau);
-    return false;
+    ka_test_run++;
+    if (ka_test_run >= KaTestRuns)
+    {
+        ka_test_run = -1;
+        return false;
+    }
+    ka_test_settling = true;
+    ka_test_time = 0.0;
+    return true;
 }
 
 void motion_zero_position(void)
@@ -223,6 +280,14 @@ void motion_zero_position(void)
     distanceL = 0.0;
     distanceR = 0.0;
     heading_offset = orientation.yaw();
+}
+
+// Feedforward voltage for one motor; the direction (and so the constants) follows the sign of target_w, or target_a at standstill.
+static double motor_feedforward(const MotorConstants& m, double target_w, double target_a)
+{
+    const MotorModel& d = (target_w != 0.0 ? target_w : target_a) >= 0.0 ? m.forward : m.reverse;
+    double ks = target_w >= MinMotorRadPerSec ? d.Ks : (target_w <= -MinMotorRadPerSec ? -d.Ks : 0.0);
+    return ks + d.Kv * target_w + d.Ka * target_a;
 }
 
 void motion_update(void)
@@ -336,53 +401,32 @@ void motion_update(void)
 
     if (move)
     {
+            // Limits for the direction we are heading in, and for the direction we are currently travelling (matters when braking or reversing).
+            const MotionLimits& toward = remaining_distance >= 0 ? ForwardLimits : ReverseLimits;
+            const MotionLimits& travelling = (target_v != 0.0 ? target_v : remaining_distance) >= 0 ? ForwardLimits : ReverseLimits;
+
             // Fastest speed from which we can still stop within the remaining distance; sign points toward the target.
-            double v_limit = std::min({MaxVelocity, std::sqrt(2.0 * DecelPlanMargin * MaxDeceleration * std::abs(remaining_distance)), PositionKp * std::abs(remaining_distance)});
+            double v_limit = std::min({toward.velocity, std::sqrt(2.0 * DecelPlanMargin * toward.deceleration * std::abs(remaining_distance)), PositionKp * std::abs(remaining_distance)});
             double v_desired = remaining_distance >= 0 ? v_limit : -v_limit;
 
             // Slew toward v_desired: brake rate when reducing speed or reversing, accel rate when speeding up.
             bool speeding_up = std::abs(v_desired) > std::abs(target_v) && (v_desired * target_v >= 0);
-            double max_step = (speeding_up ? MaxAcceleration : MaxDeceleration) * dt;
+            double max_step = (speeding_up ? toward.acceleration : travelling.deceleration) * dt;
             double step = std::clamp(v_desired - target_v, -max_step, max_step);
             target_v += step;
             target_a = step / dt;
-            target_w = 0;
+
+            target_w = hold_heading ? pid_heading.compute_radians(target_heading, orientation.yaw(), dt) : 0.0;
+
             if (std::abs(remaining_distance) < 0.005 && std::abs(velocity) < 0.05)
             {
                 target_a = 0;
                 target_v = 0;
+                target_w = 0;
+                pid_heading.reset();
                 pid_wL.reset(); // Stop the integrator winding up against static friction and hunting
                 pid_wR.reset();
             }
- 
-            //utils::debug_printf("remaining_angle: %f, stopping_angle: %f, target_w: %f, w_heading: %f\n", remaining_angle, stopping_angle, target_w, w_heading);
-/*
-            if (remaining_angle > 0.1 && remaining_angle > stopping_angle)
-            {
-                target_alpha = MaxAngularAcceleration;
-                target_w += target_alpha * dt;
-            }
-            else if (remaining_angle < -0.1 && remaining_angle < stopping_angle)
-            {
-                target_alpha = -MaxAngularAcceleration;
-                target_w += target_alpha * dt;
-            }
-            else if (remaining_angle > 0.1 && remaining_angle <= stopping_angle)
-            {
-                target_alpha = -MaxAngularDeceleration;
-                target_w += target_alpha * dt;
-            }
-            else if (remaining_angle < -0.1 && remaining_angle >= stopping_angle)
-            {
-                target_alpha = MaxAngularDeceleration;
-                target_w += target_alpha * dt;
-            }
-            else
-            {
-                target_alpha = 0;
-                target_w = 0;
-            }
-*/
     }
     else
     {
@@ -396,19 +440,21 @@ void motion_update(void)
     if (clamped_v != target_v) target_a = 0; // No acceleration feedforward while saturated
     target_v = clamped_v;
     target_w = std::clamp(target_w, -MaxAngularVelocity, MaxAngularVelocity); // Clamp target angular velocity to the maximum allowed angular velocity
-    target_w = 0;
-    target_alpha = 0;
     double target_wL = (target_v - target_w * WHEEL_BASE / 2.0) / WHEEL_RADIUS; //desired angular velocity for left wheel
     double target_wR = (target_v + target_w * WHEEL_BASE / 2.0) / WHEEL_RADIUS; //desired angular velocity for right wheel
     double target_aL = (target_a - target_alpha * WHEEL_BASE / 2.0) / WHEEL_RADIUS; //desired angular acceleration for left wheel
     double target_aR = (target_a + target_alpha * WHEEL_BASE / 2.0) / WHEEL_RADIUS; //desired angular acceleration for right wheel
 
     //Compute the required motor voltages based on the target angular velocities and accelerations
-    double VoltageL = (target_wL >= MinMotorRadPerSec ? Ks : (target_wL <= -MinMotorRadPerSec ? -Ks : 0)) + Kv * target_wL + Ka * target_aL + pid_wL.compute(target_wL, wL, dt);
-    double VoltageR = (target_wR >= MinMotorRadPerSec ? Ks : (target_wR <= -MinMotorRadPerSec ? -Ks : 0)) + Kv * target_wR + Ka * target_aR + pid_wR.compute(target_wR, wR, dt);
+    double VoltageL = motor_feedforward(LeftMotorModel, target_wL, target_aL) + pid_wL.compute(target_wL, wL, dt);
+    double VoltageR = motor_feedforward(RightMotorModel, target_wR, target_aR) + pid_wR.compute(target_wR, wR, dt);
 
-    double ka_V;
-    if (ka_test_step(dt, (wL + wR) / 2.0, ka_V)) VoltageL = VoltageR = ka_V;
+    double ka_VL, ka_VR;
+    if (ka_test_step(dt, wL, wR, ka_VL, ka_VR))
+    {
+        VoltageL = ka_VL;
+        VoltageR = ka_VR;
+    }
 
     if (move)
     {
@@ -425,9 +471,5 @@ void motion_update(void)
     left_motor.setPower(dutyCycleL); //The duty cycle is clamped in the setPower method
     right_motor.setPower(dutyCycleR);
 
-    //utils::debug_printf("Test Angular Velocity: %.3f, Duty Cycle L: %.3f, Duty Cycle R: %.3f, wL: %.3f, wR: %.3f\n", test_w, dutyCycleL, dutyCycleR, wL, wR);
-
-    //utils::debug_printf("Started: %d, Distance: %.3f, Target Distance: %.3f, remaining distance: %.3f, stopping distance: %.3f, Target Velocity: %.3f, Target Acceleration: %.3f\nTarget wL: %.3f, Target wR: %.3f, Target aL: %.3f, Target aR: %.3f, VoltageL: %.3f, VoltageR: %.3f, dutyCycleL: %.3f, dutyCycleR: %.3f\n"
-    //    , move_distance, distance, target_distance, remaining_distance, stopping_distance, target_v, target_a, target_wL, target_wR, target_aL, target_aR, VoltageL, VoltageR, dutyCycleL, dutyCycleR);
 }
 

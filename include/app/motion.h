@@ -26,11 +26,14 @@ extern bool voltage_saturated; // Wheel voltage hit the supply limit during the 
 extern double max_tracking_error; // Peak |target_v - velocity| during the last move, m/s
 extern double max_slip_accel; // Peak encoder accel minus IMU accel during the last move, m/s^2
 extern double heading; //rad
-extern double ka_test_w_ss; // Ka test: steady-state wheel speed, rad/s
-extern double ka_test_tau; // Ka test: time constant, s
-extern double ka_test_Kv_meas; // Ka test: measured Kv
-extern double ka_test_Ka; // Ka test: Kv * tau
-extern double ka_test_Ka_meas; // Ka test: Kv_meas * tau
+struct KaTestResult
+{
+    double w_ss; // Steady-state wheel speed, rad/s
+    double tau; // Time constant, s; -1 if 63.2% was never reached
+    double Kv; // Measured Kv, V/(rad/s)
+    double Ka; // Kv * tau
+};
+extern KaTestResult ka_test_results[4]; // Left forward, left reverse, right forward, right reverse
 extern double target_heading; //rad
 
 #endif // APP_MOTION_H
