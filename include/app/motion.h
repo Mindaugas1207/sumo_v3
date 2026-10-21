@@ -26,6 +26,10 @@ extern bool voltage_saturated; // Wheel voltage hit the supply limit during the 
 extern double max_tracking_error; // Peak |target_v - velocity| during the last move, m/s
 extern double max_slip_accel; // Peak encoder accel minus IMU accel during the last move, m/s^2
 extern double heading; //rad
+extern double start_delay_L_ms; // Move command to left wheel moving, ms; -1 if not yet
+extern double start_delay_R_ms; // Move command to right wheel moving, ms; -1 if not yet
+extern double max_heading_error; // Peak |target_heading - yaw| during the last move, rad
+extern double odometry_heading; // Heading from the wheel difference since the last zero, rad
 struct KaTestResult
 {
     double w_ss; // Steady-state wheel speed, rad/s

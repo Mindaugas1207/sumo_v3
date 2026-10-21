@@ -124,6 +124,15 @@ public:
         snprintf(buffer, sizeof(buffer), "heading: %.2f", heading * 180.0 / M_PI);
         g.drawText(x, y, buffer, -1, -1, Color::White());
         y += textHeight;
+        snprintf(buffer, sizeof(buffer), "odo heading: %.2f", odometry_heading * 180.0 / M_PI);
+        g.drawText(x, y, buffer, -1, -1, Color::White());
+        y += textHeight;
+        snprintf(buffer, sizeof(buffer), "start L:%.1f R:%.1f ms", start_delay_L_ms, start_delay_R_ms);
+        g.drawText(x, y, buffer, -1, -1, Color::White());
+        y += textHeight;
+        snprintf(buffer, sizeof(buffer), "max hdg err: %.2f", max_heading_error * 180.0 / M_PI);
+        g.drawText(x, y, buffer, -1, -1, Color::White());
+        y += textHeight;
         snprintf(buffer, sizeof(buffer), "target_heading: %.2f", target_heading * 180.0 / M_PI);
         g.drawText(x, y, buffer, -1, -1, Color::White());
         y += textHeight;
@@ -148,8 +157,9 @@ public:
         //g.drawText(x, y, buffer, -1, -1, Color::White());
         //y += textHeight;
 
-        //snprintf(buffer, sizeof(buffer), "sat:%d err:%.2f slip:%.2f", voltage_saturated, max_tracking_error, max_slip_accel);
+        snprintf(buffer, sizeof(buffer), "sat:%d err:%.2f slip:%.2f", voltage_saturated, max_tracking_error, max_slip_accel);
         g.drawText(x, y, buffer, -1, -1, Color::White());
+        /*
         y += textHeight;
         static const char* ka_test_labels[4] = {"LF", "LR", "RF", "RR"};
         for (int i = 0; i < 4; i++)
@@ -157,7 +167,7 @@ public:
             snprintf(buffer, sizeof(buffer), "%s Kv:%.4f Ka:%.5f", ka_test_labels[i], ka_test_results[i].Kv, ka_test_results[i].Ka);
             g.drawText(x, y, buffer, -1, -1, Color::White());
             y += textHeight;
-        }
+        }*/
 
         /*
         snprintf(buffer, sizeof(buffer), "a: %.2f, %.2f, %.2f", motionData.linear_acceleration.X, motionData.linear_acceleration.Y, motionData.linear_acceleration.Z);

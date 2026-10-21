@@ -7,10 +7,7 @@
 constexpr double distanceFilter = 0.8;
 
 std::array<int, num_distance_sensors> distanceSensorValues;
-bool line_sensor_left;
-bool line_sensor_right;
 
-void line_sensor_callback(void* context, uint32_t events);
 
 void sensors_init(void)
 {
@@ -19,11 +16,7 @@ void sensors_init(void)
     {
         distanceSensorValues[i] = MAX_DISTANCE;
     }
-    // Initialize line sensors to false
-    line_sensor_left = false;
-    line_sensor_right = false;
-    line_sensor_events[front_left_line_sensor_index].setCallback(line_sensor_callback, reinterpret_cast<void*>(front_left_line_sensor_index));
-    line_sensor_events[front_right_line_sensor_index].setCallback(line_sensor_callback, reinterpret_cast<void*>(front_right_line_sensor_index));
+    
 }
 
 void handle_sensors(void)
@@ -57,39 +50,7 @@ SensorData get_sensor_data(void)
         data.distanceSensorDetected[i] = detected;
         data.targetDetected = data.targetDetected || detected;
     }
-
-    
-    data.lineSensorLeft = line_sensor_left;
-    data.lineSensorRight = line_sensor_right;
     return data;
 }
 
-void line_sensor_callback(void* context, uint32_t events)
-{
-    uint index = reinterpret_cast<uintptr_t>(context);
 
-    //utils::debug_printf("Line sensor %d event: 0x%x\n", index, events);
-
-    bool state;
-    if (events & GPIO_IRQ_EDGE_RISE)
-    {
-        state = true;
-    }
-    else if (events & GPIO_IRQ_EDGE_FALL)
-    {
-        state = false;
-    }
-    else
-    {
-        return; // Unhandled event type
-    }
-    
-    if (index == front_left_line_sensor_index)
-    {
-        line_sensor_left = state;
-    }
-    else if (index == front_right_line_sensor_index)
-    {
-        line_sensor_right = state;
-    }
-}

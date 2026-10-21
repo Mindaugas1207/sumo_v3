@@ -9,8 +9,6 @@ struct SensorData
 {
     std::vector<int> distanceSensorValues;
     bool distanceSensorDetected[7];
-    bool lineSensorLeft;
-    bool lineSensorRight;
     bool targetDetected;
 };
 
