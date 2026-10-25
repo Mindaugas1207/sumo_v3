@@ -26,13 +26,10 @@ struct nvm_config
 inline constexpr auto imu_data_rate = LSM6DSR::DATA_RATE_833HZ;
 inline constexpr unsigned int imu_sample_rate_hz = LSM6DSR::DataRateToHz(imu_data_rate);
 inline constexpr unsigned int imu_sample_period_us = 1000000 / imu_sample_rate_hz;
-inline constexpr unsigned int front_left_line_sensor_index = 0;
-inline constexpr unsigned int front_right_line_sensor_index = 1;
 inline constexpr unsigned int num_distance_sensors = DISTANCE_SENSOR_COUNT;
 inline constexpr unsigned int num_line_sensors = LINE_SENSOR_COUNT;
 
 extern IoInterruptEvent imu_data_ready_event;
-extern IoInterruptEvent line_sensor_events[num_line_sensors];
 
 
 extern PioWS2812 STATUS_Led;

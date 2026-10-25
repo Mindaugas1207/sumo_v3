@@ -112,115 +112,37 @@ public:
         int x = 0;
         int y = TOP_RIBON_SIZE;
         int textHeight = g.getFontHeight();
-        //MotionData motionData = get_motion_data();
-        //SensorData sensorData = get_sensor_data();
-        char buffer[32];
-        //snprintf(buffer, sizeof(buffer), "a: %.2f", acceleration);
-        //g.drawText(x, y, buffer, -1, -1, Color::White());
-        //y += textHeight;
-        //snprintf(buffer, sizeof(buffer), "v: %.2f", velocity);
-        //g.drawText(x, y, buffer, -1, -1, Color::White());
-        //y += textHeight;
-        snprintf(buffer, sizeof(buffer), "heading: %.2f", heading * 180.0 / M_PI);
-        g.drawText(x, y, buffer, -1, -1, Color::White());
-        y += textHeight;
-        snprintf(buffer, sizeof(buffer), "odo heading: %.2f", odometry_heading * 180.0 / M_PI);
-        g.drawText(x, y, buffer, -1, -1, Color::White());
-        y += textHeight;
-        snprintf(buffer, sizeof(buffer), "start L:%.1f R:%.1f ms", start_delay_L_ms, start_delay_R_ms);
-        g.drawText(x, y, buffer, -1, -1, Color::White());
-        y += textHeight;
-        snprintf(buffer, sizeof(buffer), "max hdg err: %.2f", max_heading_error * 180.0 / M_PI);
-        g.drawText(x, y, buffer, -1, -1, Color::White());
-        y += textHeight;
-        snprintf(buffer, sizeof(buffer), "target_heading: %.2f", target_heading * 180.0 / M_PI);
-        g.drawText(x, y, buffer, -1, -1, Color::White());
-        y += textHeight;
-        snprintf(buffer, sizeof(buffer), "d: %.2f", distance);
-        g.drawText(x, y, buffer, -1, -1, Color::White());
-        y += textHeight;
-        snprintf(buffer, sizeof(buffer), "target_v: %.2f", target_v);
-        g.drawText(x, y, buffer, -1, -1, Color::White());
-        y += textHeight;
-        snprintf(buffer, sizeof(buffer), "target_w: %.2f", target_w);
-        g.drawText(x, y, buffer, -1, -1, Color::White());
-        y += textHeight;
-        //snprintf(buffer, sizeof(buffer), "target_a: %.2f", target_a);
-        //g.drawText(x, y, buffer, -1, -1, Color::White());
-        //y += textHeight;
-        
-       // snprintf(buffer, sizeof(buffer), "max_achieved_velocity: %.2f", max_achieved_velocity);
-       // g.drawText(x, y, buffer, -1, -1, Color::White());
-       // y += textHeight;
-        
-        //snprintf(buffer, sizeof(buffer), "distance_at_max_velocity: %.2f", distance_at_max_velocity);
-        //g.drawText(x, y, buffer, -1, -1, Color::White());
-        //y += textHeight;
+        char buffer[50];
 
-        snprintf(buffer, sizeof(buffer), "sat:%d err:%.2f slip:%.2f", voltage_saturated, max_tracking_error, max_slip_accel);
+        SensorData sensorData = get_sensor_data();
+        snprintf(buffer, sizeof(buffer), "%.4d %.4d %.4d %.4d %.4d %.4d %.4d", 
+                sensorData.distanceSensorValues[6],
+                sensorData.distanceSensorValues[4],
+                sensorData.distanceSensorValues[2],
+                sensorData.distanceSensorValues[3],
+                sensorData.distanceSensorValues[5],
+                sensorData.distanceSensorValues[1],
+                sensorData.distanceSensorValues[0]);
         g.drawText(x, y, buffer, -1, -1, Color::White());
-        /*
         y += textHeight;
-        static const char* ka_test_labels[4] = {"LF", "LR", "RF", "RR"};
-        for (int i = 0; i < 4; i++)
-        {
-            snprintf(buffer, sizeof(buffer), "%s Kv:%.4f Ka:%.5f", ka_test_labels[i], ka_test_results[i].Kv, ka_test_results[i].Ka);
-            g.drawText(x, y, buffer, -1, -1, Color::White());
-            y += textHeight;
-        }*/
 
         /*
-        snprintf(buffer, sizeof(buffer), "a: %.2f, %.2f, %.2f", motionData.linear_acceleration.X, motionData.linear_acceleration.Y, motionData.linear_acceleration.Z);
+        snprintf(buffer, sizeof(buffer), "Delta Heading: %.2f", delta_heading * 180.0 / M_PI);
         g.drawText(x, y, buffer, -1, -1, Color::White());
         y += textHeight;
-        snprintf(buffer, sizeof(buffer), "w: %.2f, %.2f, %.2f", motionData.angular_velocity.X, motionData.angular_velocity.Y, motionData.angular_velocity.Z);
+        snprintf(buffer, sizeof(buffer), "Target Heading: %.2f", target_heading * 180.0 / M_PI);
         g.drawText(x, y, buffer, -1, -1, Color::White());
         y += textHeight;
-        snprintf(buffer, sizeof(buffer), "O: %.2f, %.2f, %.2f", motionData.orientation.X * 180.0 / M_PI, motionData.orientation.Y * 180.0 / M_PI, motionData.orientation.Z * 180.0 / M_PI);
+        snprintf(buffer, sizeof(buffer), "Total Heading: %.2f", total_heading * 180.0 / M_PI);
         g.drawText(x, y, buffer, -1, -1, Color::White());
         y += textHeight;
-        snprintf(buffer, sizeof(buffer), "Stationary: %s", motionData.stationary ? "Yes" : "No");
+        snprintf(buffer, sizeof(buffer), "Line Avoidance State: %d", static_cast<int>(line_avoidance_state));
         g.drawText(x, y, buffer, -1, -1, Color::White());
         y += textHeight;
-        snprintf(buffer, sizeof(buffer), "R: %.2f L: %.2f Df: %.2f", motionData.right_wheel_angle * 180.0 / M_PI, motionData.left_wheel_angle * 180.0 / M_PI, motionData.forward_distance);
+        snprintf(buffer, sizeof(buffer), "Motion State: %d", static_cast<int>(motion_state));
         g.drawText(x, y, buffer, -1, -1, Color::White());
         y += textHeight;
-        snprintf(buffer, sizeof(buffer), "vl: %.2f RPM vr: %.2f RPM", motionData.left_wheel_velocity * 60.0 / (2.0 * M_PI), motionData.right_wheel_velocity * 60.0 / (2.0 * M_PI));
-        g.drawText(x, y, buffer, -1, -1, Color::White());
-        y += textHeight;
-*/  
-/*
-        x = 0;
-        y = g.getHeight() - textHeight * 2;
-
-        if (sensorData.distanceSensorValues.size() != 7)
-        {
-            g.drawText(x, y, "Invalid sensor data", -1, -1, Color::White());
-            return;
-        }
-        snprintf(buffer, sizeof(buffer), "%d", sensorData.distanceSensorValues[5]);
-        g.drawText(x, y, buffer, -1, -1, Color::White());
-        snprintf(buffer, sizeof(buffer), "%d", sensorData.distanceSensorValues[4]);
-        g.drawText(x + 28, y, buffer, -1, -1, Color::White());
-        snprintf(buffer, sizeof(buffer), "%d", sensorData.distanceSensorValues[3]);
-        g.drawText(x + 56, y, buffer, -1, -1, Color::White());
-        snprintf(buffer, sizeof(buffer), "%d", sensorData.distanceSensorValues[2]);
-        g.drawText(x + 84, y, buffer, -1, -1, Color::White());
-        snprintf(buffer, sizeof(buffer), "%d", sensorData.distanceSensorValues[1]);
-        g.drawText(x + 112, y, buffer, -1, -1, Color::White());
-        snprintf(buffer, sizeof(buffer), "%d", sensorData.distanceSensorValues[6]);
-        g.drawText(x, y + textHeight, buffer, -1, -1, Color::White());
-        snprintf(buffer, sizeof(buffer), "%s", sensorData.lineSensorLeft ? "WHITE" : "BLACK");
-        g.drawText(x + 28, y + textHeight, buffer, -1, -1, Color::White());
-        snprintf(buffer, sizeof(buffer), "%s", sensorData.lineSensorRight ? "WHITE" : "BLACK");
-        g.drawText(x + 84, y + textHeight, buffer, -1, -1, Color::White());
-        snprintf(buffer, sizeof(buffer), "%d", sensorData.distanceSensorValues[0]);
-        g.drawText(x + 112, y + textHeight, buffer, -1, -1, Color::White());
-        if (sensorData.targetDetected)
-        {
-            g.drawText(x + 62, y + textHeight, "|", -1, -1, Color::White());
-        }
-            */
+        */
     }
 
     bool allowOverlay() const override
@@ -235,27 +157,6 @@ public:
     void draw(Graphics& g) override
     {
         g.drawText(0, TOP_RIBON_SIZE, "Home View", -1, -1, Color::White());
-        char buffer[32];
-        switch (combat_state)
-        {
-            case STATE_SEARCH:
-                snprintf(buffer, sizeof(buffer), "Combat State: SEARCH");
-                break;
-            case STATE_APPROACH:
-                snprintf(buffer, sizeof(buffer), "Combat State: APPROACH");
-                break;
-            case STATE_PREPARE_ATTACK:
-                snprintf(buffer, sizeof(buffer), "Combat State: PREPARE_ATTACK");
-                break;
-            case STATE_ATTACK:
-                snprintf(buffer, sizeof(buffer), "Combat State: ATTACK");
-                break;
-            default:
-                snprintf(buffer, sizeof(buffer), "Combat State: UNKNOWN");
-                break;
-        }
-        g.drawText(0, TOP_RIBON_SIZE + 16, buffer, -1, -1, Color::White());
-        
     }
 
     bool allowOverlay() const override

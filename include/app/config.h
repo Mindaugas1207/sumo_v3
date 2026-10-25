@@ -52,8 +52,8 @@
 #define LINE_SENSOR_COUNT 3
 #endif
 #if ROBOT_VERSION == 2
-#define LINE_SENSOR_RIGHT_PIN 14 //right
-#define LINE_SENSOR_LEFT_PIN 4 //left
+#define LINE_SENSOR_RIGHT_PIN 13 //right
+#define LINE_SENSOR_LEFT_PIN 5 //left
 #define LINE_SENSOR_COUNT 2
 #endif
 
@@ -61,7 +61,7 @@
 #define RECEIVER_PIN 7
 #endif
 #if ROBOT_VERSION == 2
-#define RECEIVER_PIN 1
+#define RECEIVER_PIN 2
 #endif
 
 #define FLAG_MODULE_PIN 9

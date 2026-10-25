@@ -139,15 +139,15 @@ constexpr LineSensor::config line_sensor_configs[num_line_sensors] = {
 PicoI2CBus i2c_bus(I2C_PORT, I2C_SPEED, I2C_SCL, I2C_SDA, false);
 PicoI2CBus i2c_bus2(I2C_PORT2, I2C_SPEED2, I2C_SCL2, I2C_SDA2, true);
 PioOneWireSerial pio_serial(pio0, 0, 1);
+PioOneWireSerial pio_serial2(pio1, 0, 1);
 
 PioWS2812 STATUS_Led(pio2, 0, LED_PIN);
 
-auto receiver_serial_pin = PioOneWireSerialMuxedPin(pio_serial, ir_receiver_pin);
+auto receiver_serial_pin = PioOneWireSerialMuxedPin(pio_serial2, ir_receiver_pin);
 auto distance_sensor_serial_pins = make_serial_pins(pio_serial, distance_sensor_pins);
-auto line_sensor_serial_pins = make_serial_pins(pio_serial, line_sensor_pins);
+auto line_sensor_serial_pins = make_serial_pins(pio_serial2, line_sensor_pins);
 
 IoInterruptEvent imu_data_ready_event(IMU_INT_PIN, GPIO_IRQ_EDGE_RISE);
-IoInterruptEvent line_sensor_events[num_line_sensors];
 
 LSM6DSR imu(i2c_bus);
 IrReceiver irReceiver = IrReceiver(receiver_serial_pin);
@@ -372,6 +372,8 @@ void serial_devices_init(void)
     utils::info_printf("Initializing sensors...\n");
     pio_serial.end(); // Ensure the serial interface is stopped before configuring pins
     pio_serial.begin(SERIAL_BAUD_RATE); // Start the serial interface at the configured baud rate
+    pio_serial2.end(); // Ensure the second serial interface is stopped before configuring pins
+    pio_serial2.begin(SERIAL_BAUD_RATE); // Start the second serial interface at the configured baud rate
     // Ensure all pins are high to let the sensors start in normal mode.
     for (int i = 0; i < num_distance_sensors; i++)
         distance_sensor_serial_pins[i].assertPin(true);
@@ -380,10 +382,11 @@ void serial_devices_init(void)
     receiver_serial_pin.assertPin(true);
     sensor_power_enable(true); // Enable sensors power
     utils::sleep_ms(100); // Wait for sensors to power up
-    // Configure line sensor pins with interrupts for line detection.
+    // Configure line sensor pins as inputs for line detection.
     for (int i = 0; i < num_line_sensors; i++)
     {
-        line_sensor_events[i].configure(line_sensor_pins[i], GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL);
+        gpio_init(line_sensor_pins[i]);
+        gpio_set_dir(line_sensor_pins[i], GPIO_IN);
     }
     // For the IR receiver, we can wait for it to start responding.
     if (!irReceiver.waitForBoot(500))
@@ -407,6 +410,8 @@ void serial_devices_configure(void)
     utils::info_printf("Configuring sensors...\n");
     pio_serial.end(); // Ensure the serial interface is stopped before configuring pins
     pio_serial.begin(DEFAULT_SERIAL_BAUD_RATE); // Start the serial interface at the default baud rate for configuration
+    pio_serial2.end(); // Ensure the second serial interface is stopped before configuring pins
+    pio_serial2.begin(DEFAULT_SERIAL_BAUD_RATE); // Start the second serial interface at the default baud rate for configuration
     utils::info_printf("Entering configuration mode...\n");
     sensor_power_enable(false); // Power off sensors
     utils::sleep_ms(500); // Wait for sensors to power down
@@ -466,6 +471,7 @@ const char* configure_ir_receiver(IrReceiver &receiver, const IrReceiver::config
         return "Failed to determine baud rate";
     }
     pio_serial.begin(baud);
+    pio_serial2.begin(baud);
     if (!receiver.setIOMode(config.io_mode))
     {
         return "Failed to set I/O mode";
@@ -484,6 +490,7 @@ const char* configure_ir_receiver(IrReceiver &receiver, const IrReceiver::config
         return "Failed to restart device";
     }
     pio_serial.begin(DEFAULT_SERIAL_BAUD_RATE);
+    pio_serial2.begin(DEFAULT_SERIAL_BAUD_RATE);
     return nullptr;
 }
 
@@ -559,6 +566,7 @@ long find_baud_rate(OneWireDevice &device)
         auto code = static_cast<OneWireDevice::DeviceSerialBaudRate>(i);
         auto baud = OneWireDevice::baudRateFromCode(code);
         pio_serial.begin(baud);
+        pio_serial2.begin(baud);
         if (device.waitForBoot(500))
         {
             return baud;
@@ -578,7 +586,6 @@ void calibrate_line_sensor(unsigned int n)
         return;
     }
     // Release the pin from the interrupt so it can be used by the serial interface
-    line_sensor_events[n].deconfigure();
     line_sensor_serial_pins[n].getSerial().begin(DEFAULT_SERIAL_BAUD_RATE); // Ensure the serial interface is at the default baud rate for calibration
     sensor_power_enable(false);
     utils::sleep_ms(500);
@@ -591,7 +598,8 @@ void calibrate_line_sensor(unsigned int n)
     {
         utils::error_printf("Line sensor %d failed to boot for calibration\n", n);
         line_sensor_serial_pins[n].getSerial().begin(SERIAL_BAUD_RATE);
-        line_sensor_events[n].reconfigure();
+        gpio_init(line_sensor_pins[n]);
+        gpio_set_dir(line_sensor_pins[n], GPIO_IN);
         return;
     }
 
@@ -648,8 +656,9 @@ void calibrate_line_sensor(unsigned int n)
     utils::sleep_ms(500);
     line_sensor_serial_pins[n].getSerial().begin(SERIAL_BAUD_RATE); //return to normal baud rate
     line_sensor_serial_pins[n].assertPin(true); // Ensure the pin is released from serial control
-    // Reinitialize the line sensor pin as an input with interrupts for normal operation
-    line_sensor_events[n].reconfigure();
+    // Reinitialize the line sensor pin as an input for normal operation
+    gpio_init(line_sensor_pins[n]);
+    gpio_set_dir(line_sensor_pins[n], GPIO_IN);
 
     if (error)
     {

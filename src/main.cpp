@@ -36,13 +36,15 @@ constexpr int ATTACK_PREPARE_TIME = 150;
 constexpr int ATTACK_TIMEOUT = 120; // Attack timeout in milliseconds
 constexpr double ATTACK_VELOCITY = 0.1;
 constexpr double SEARCH_VELOCITY = 0.2;
-CombatState combat_state = STATE_SEARCH;
+
+bool tst = false;
+bool dir = false;
 
 int main()
 {
     hardware_init();
-    //sensors_init();
-
+    
+    
     //left_motor.setPower(0.4);
      //   right_motor.setPower(0.4);
 
@@ -58,8 +60,6 @@ int main()
 
     while (true)
     {
-        
-        
         
 
         //bool st = gpio_get(START_PIN);
@@ -79,6 +79,7 @@ int main()
         //}
 
         motion_update();
+
         handle_remote();
         //if (start_state)
         //{
@@ -96,10 +97,11 @@ int main()
 
 void second_core_main(void)
 {
+    sensors_init();
     while (true)
     {
         tight_loop_contents();
-        //handle_sensors();
+        handle_sensors();
     }
 }
 

@@ -50,13 +50,17 @@ constexpr MotorConstants RightMotorModel = {{Ks, Kv, Ka}, {Ks, Kv, Ka}};
 constexpr double MaxWheelMps = NominalMotorRadPerSec * WHEEL_RADIUS; // Maximum wheel speed in meters per second
 constexpr double MinWheelMps = MinMotorRadPerSec * WHEEL_RADIUS; // Minimum wheel speed in meters per second
 
+constexpr double MinRobotTurningRadS = MinWheelMps * 2.0 / WHEEL_BASE; // Minimum robot turning rate in rad/s
+
 // Voltage-limited model: V = Ks + Kv*w + Ka*alpha. Accel/decel limits are 0 if Ka is not set.
 constexpr double VoltageLimitedMaxWheelRadPerSec = (SystemVoltage - Ks) / Kv; // Steady-state speed at full voltage, in rad/s
 constexpr double VoltageLimitedMaxVelocity = VoltageLimitedMaxWheelRadPerSec * WHEEL_RADIUS; // in m/s
 constexpr double VoltageLimitedMaxAcceleration = Ka > 0.0 ? (SystemVoltage - Ks) / Ka * WHEEL_RADIUS : 0.0; // From standstill, in m/s^2
 constexpr double VoltageLimitedMinDeceleration = Ka > 0.0 ? (SystemVoltage + Ks) / Ka * WHEEL_RADIUS : 0.0; // Full reverse voltage near standstill (worst case), in m/s^2
 constexpr double VoltageLimitedMaxDeceleration = Ka > 0.0 ? (SystemVoltage + Ks + Kv * VoltageLimitedMaxWheelRadPerSec) / Ka * WHEEL_RADIUS : 0.0; // Full reverse voltage at top speed, back-EMF adds to braking (best case), in m/s^2
-
+constexpr double VoltageLimitedMaxAngularVelocity = VoltageLimitedMaxVelocity * 2.0 / WHEEL_BASE; // in rad/s
+constexpr double VoltageLimitedMaxAngularAcceleration = VoltageLimitedMaxAcceleration * 2.0 / WHEEL_BASE; // in rad/s^2
+constexpr double VoltageLimitedMinAngularDeceleration = VoltageLimitedMinDeceleration * 2.0 / WHEEL_BASE; // in rad/s^2
 //Measured values
 //2.0V -> 10-12 rad/s
 //3.0V -> 23-25 rad/s
@@ -71,8 +75,10 @@ constexpr double VoltageLimitedMaxDeceleration = Ka > 0.0 ? (SystemVoltage + Ks 
 //12.0V -> 119-125 rad/s
 
 constexpr double DecelPlanMargin = 0.8; // Plan braking at this fraction of the deceleration limit so there is headroom to correct
-constexpr double PositionKp = 20.0; // 1/s, caps v_desired near the target so the sqrt profile's infinite slope doesn't cause chatter
+constexpr double PositionKp = 50.0; // 1/s, caps v_desired near the target so the sqrt profile's infinite slope doesn't cause chatter
+constexpr double HeadingKp = 50.0; // 1/s, proportional gain for heading control
 constexpr double MaxVelocity = 1.0 * VoltageLimitedMaxVelocity; // Maximum velocity in m/s, 10% voltage headroom left for the PID
+constexpr double MaxAngularVelocity = 1.0 * VoltageLimitedMaxAngularVelocity; // Maximum angular velocity in rad/s (tune)
 
 struct MotionLimits
 {
@@ -83,13 +89,37 @@ struct MotionLimits
 
 // Wheels are at the rear and the centre of mass is forward, so grip differs by direction of travel and by speeding up vs braking.
 constexpr MotionLimits ForwardLimits = {14.0, 9.0, MaxVelocity};
-constexpr MotionLimits ReverseLimits = {5.0, 7.0, MaxVelocity};
-constexpr double MaxAngularVelocity = 40.0; // Maximum angular velocity in rad/s (tune)
+constexpr MotionLimits ReverseLimits = {5.0, 5.0, MaxVelocity};
+constexpr MotionLimits RotationalLimits = {300, 120, MaxAngularVelocity};
+
 constexpr double MaxAngularAcceleration = 600.0; // Maximum angular acceleration in rad/s^2 (tune)
 constexpr double MaxAngularDeceleration = 200.0; // Maximum angular deceleration in rad/s^2 (tune)
 constexpr double HeadingMaxW = 2.0; // rad/s, limits the heading correction so a wheel that can't follow doesn't wind it into a spin
 constexpr double HeadingRelatchError = 5.0 * M_PI / 180.0; // rad, beyond this the robot was probably moved by hand
 constexpr double StartDetectRadPerSec = 3.0; // Wheel speed that counts as having started moving
+constexpr double MinDistance = 0.005; // Minimum distance to consider the robot as having reached its target, in meters.
+constexpr double MinHeadingError = 1.0 * M_PI / 180.0; // Minimum heading error to consider the robot as having reached its target, in rad.
+constexpr double MinVelocity = MinWheelMps / 5; // Minimum velocity to consider the robot as having reached its target, in m/s.
+constexpr double MinAngularVelocity = MinRobotTurningRadS / 4; // Minimum angular velocity to consider the robot as having reached its target, in rad/s.
+constexpr double StopDeceleration = 20.0; // Deceleration used during an emergency stop, in m/s^2.
+constexpr double LineReturnDistance = 0.1; // Distance to move back after detecting a line, in meters.
+constexpr double CoastingVelocity = 0.4; // Velocity to maintain during coasting, in m/s.
+
+constexpr double maxVelocityForStoppingDistance(
+    double stopping_distance,
+    double deceleration,
+    double margin = 0.5)
+{
+    return vmath::sqrt(
+        2.0 * deceleration *
+        stopping_distance * margin);
+}
+
+constexpr double v_edge =
+    maxVelocityForStoppingDistance(
+        0.02,                       // 2 cm
+        10.0,
+        0.5);                       // 50% margin
 
 constexpr double G = 9.80665; // Gravity constant in m/s^2, used to convert accelerometer readings from g to m/s^2. The standard value is 9.80665 m/s^2.
 constexpr double a_cutoff = 10.0; //Hz
@@ -104,93 +134,72 @@ vmath::MadgwickFilter<double> imu_filter(madgwick_beta);
 
 vmath::vector3d<double> accelBias = {0.0};
 vmath::vector3d<double> gyroBias = {0.0};
-vmath::vector3d<double> linear_acceleration = {0.0}; // In the robot-heading-aligned frame with Z fixed up, in m/s^2, referenced to initial orientation at power on
-vmath::vector3d<double> angular_velocity = {0.0}; // In the robot-heading-aligned frame with Z fixed up, in rad/s, referenced to initial orientation at power on
-vmath::vector3d<double> angular_acceleration = {0.0}; // In the robot-heading-aligned frame with Z fixed up, in rad/s^2, referenced to initial orientation at power on
 vmath::vector3d<double> orientation = {0.0}; // Euler angles in radians, in ZYX order (yaw-pitch-roll), referenced to initial orientation at power on
-bool stationary = true; // Whether the robot is stationary based on IMU readings, used to determine whether to trust orientation and velocity information from the IMU or not
+
 double angleL_total = 0.0;//rad
 double angleR_total = 0.0;//rad
-double wL = 0.0;//rad/s
-double wR = 0.0;//rad/s
-double aL = 0.0;//m/s^2
-double aR = 0.0;//m/s^2
-double distanceL = 0.0;//m
-double distanceR = 0.0;//m
-
-double acceleration = 0.0;//m/s^2
-double velocity = 0.0;//m/s
 double distance = 0.0;//m
-
+double total_heading = 0.0; // Total accumulated heading change in radians
+double line_detected_distance = 0.0; // Distance at which a line was detected, in meters
+bool line_was_detected = false; // True if a line was detected
+double delta_heading = 0.0;
 double target_v = 0; //desired linear velocity (of the robot) in m/s
 double target_w = 0; //desired angular velocity or rotational velocity (of the robot) in rad/s
 double target_a = 0; //desired linear acceleration (of the robot) in m/s^2
 double target_alpha = 0; //desired angular acceleration (of the robot) in rad/s^2
 double target_distance = 0.0;//m
+double target_speed = 0.0; // Desired speed at the end of the move
 double target_heading = 0.0;//rad
-bool move = false;
 bool hold_heading = false; // True for straight moves (no commanded turn)
-double max_achieved_velocity = 0.0; // m/s
-double distance_at_max_velocity = 0.0; // m
-bool voltage_saturated = false; // Latched during a move if a commanded wheel voltage exceeded SystemVoltage
-double max_tracking_error = 0.0; // Peak |target_v - velocity| during a move, m/s
-double max_slip_accel = 0.0; // Peak (encoder accel - IMU accel) during a move, m/s^2; large means slipping
-utils::time_t move_start_time = 0;
-double start_delay_L_ms = -1.0; // Time from the move command until the left wheel passed StartDetectRadPerSec, -1 if not yet
-double start_delay_R_ms = -1.0; // Same for the right wheel
-double max_heading_error = 0.0; // Peak |target_heading - yaw| during a move, rad
-
-double heading_offset = 0.0; //rad
-
-double heading = 0.0;
-double odometry_heading = 0.0; // Heading from the wheel difference since the last zero, rad (for comparing with the gyro)
 
 PID pid_wL(0.5, 2.0, 0.0, 1.5, 2.5);
 PID pid_wR(0.5, 2.0, 0.0, 1.5, 2.5);
 PID pid_heading(10.0, 0.5, 0.0, 5.0, 20.0); // Heading error in rad, output is target_w in rad/s
-
-volatile bool line_sensor_left;
-volatile bool line_sensor_right;
-static bool line_active = false; // Either front sensor currently sees the white edge
-static bool line_braking = false; // Stopping after the edge was detected
-
-void line_sensor_callback(void* context, uint32_t events);
+/*
+enum class MotionState
+{
+    Idle,
+    EmergencyStop,
+    Moving,
+    Turning
+};*/
+MotionState motion_state = MotionState::Idle;
 
 void motion_init(void)
 {
     accelBias = active_config.accelBias;
     gyroBias = active_config.gyroBias;
     // Initialize line sensors to false
-    line_sensor_left = false;
-    line_sensor_right = false;
-    line_sensor_events[front_left_line_sensor_index].setCallback(line_sensor_callback, reinterpret_cast<void*>(front_left_line_sensor_index));
-    line_sensor_events[front_right_line_sensor_index].setCallback(line_sensor_callback, reinterpret_cast<void*>(front_right_line_sensor_index));
 }
 
 void motion_move(double delta_distance, double delta_angle)
 {
-    if ((line_sensor_left || line_sensor_right) && (delta_distance > 0.0 || delta_angle != 0.0)) return; // Only backward moves are allowed on the line
-    target_distance = distance + delta_distance;
-    // Straight moves keep the previous target so the end-of-move heading error doesn't accumulate from move to move
-    if (delta_angle != 0.0 || std::abs(vmath::angleDifference(orientation.yaw(), target_heading)) > HeadingRelatchError)
-        target_heading = vmath::constrainAngle(orientation.yaw() + delta_angle);
-    move = true;
-    hold_heading = (delta_angle == 0.0);
-    pid_heading.reset();
-    max_achieved_velocity = 0.0;
-    distance_at_max_velocity = 0.0;
-    voltage_saturated = false;
-    max_tracking_error = 0.0;
-    max_slip_accel = 0.0;
-    move_start_time = utils::now();
-    start_delay_L_ms = -1.0;
-    start_delay_R_ms = -1.0;
-    max_heading_error = 0.0;
+    if (motion_state != MotionState::Idle)
+        return;
+
+    if (delta_distance == 0.0 && delta_angle == 0.0)
+        return;
+    if (delta_distance == 0.0)
+    {
+        target_heading = total_heading + delta_angle;
+        motion_state = MotionState::Turning; // If only an angle is specified, we are turning
+        target_speed = 0.0;
+        return; // No need to set target distance for pure turn
+    }
+    else
+    {
+        target_distance = distance + delta_distance;
+        target_heading = total_heading;
+        target_speed = delta_distance > 0 ? CoastingVelocity : 0;
+        motion_state = MotionState::Moving; // If a distance is specified, we are moving
+    }
+    
 }
 
 void motion_test(bool forward)
 {
-    motion_move(forward ? 0.1 : -0.1, 0.0);
+    motion_move(forward ? 0.4 : -0.1, 0.0);
+    //tst = forward;
 }
 
 void motion_turn_test(bool left)
@@ -198,115 +207,12 @@ void motion_turn_test(bool left)
     motion_move(0.0, left ? 90.0 / 180.0 * M_PI : -90.0 / 180.0 * M_PI);
 }
 
-// Ka step-response test: for each motor and direction in turn, apply a voltage step from rest to that motor alone,
-// then fit tau = Ka/Kv from the speed rise (w = w_ss * (1 - exp(-t/tau))). Run with the wheels free.
-constexpr double KaTestVoltage = 6.0; // Volts, keep well below SystemVoltage so the rise is slow enough to sample
-constexpr double KaTestDuration = 0.6; // Seconds, several time constants
-constexpr double KaTestSettleTime = 0.5; // Seconds with the motors off between runs so the wheel stops
-constexpr size_t KaTestMaxSamples = 1024;
-constexpr int KaTestRuns = 4; // left forward, left reverse, right forward, right reverse
-static int ka_test_run = -1; // -1 when idle
-static bool ka_test_settling = false;
-static double ka_test_time = 0.0;
-static size_t ka_test_count = 0;
-static float ka_test_t[KaTestMaxSamples];
-static float ka_test_w[KaTestMaxSamples];
-
-KaTestResult ka_test_results[KaTestRuns];
-
-void motion_ka_test(void)
-{
-    move = false;
-    ka_test_run = 0;
-    ka_test_settling = false;
-    ka_test_time = 0.0;
-    ka_test_count = 0;
-}
-
-// Returns true while the test owns the motors; VL and VR are the voltages to apply.
-static bool ka_test_step(double dt, double wL, double wR, double& VL, double& VR)
-{
-    if (ka_test_run < 0) return false;
-
-    VL = VR = 0.0;
-    if (ka_test_settling)
-    {
-        ka_test_time += dt;
-        if (ka_test_time >= KaTestSettleTime)
-        {
-            ka_test_settling = false;
-            ka_test_time = 0.0;
-            ka_test_count = 0;
-        }
-        return true;
-    }
-
-    bool right = ka_test_run >= 2;
-    bool reverse = (ka_test_run & 1) != 0;
-    double sign = reverse ? -1.0 : 1.0;
-    double w_avg = sign * (right ? wR : wL); // Positive in the driven direction
-
-    if (ka_test_time < KaTestDuration && ka_test_count < KaTestMaxSamples)
-    {
-        ka_test_t[ka_test_count] = ka_test_time;
-        ka_test_w[ka_test_count] = w_avg;
-        ka_test_count++;
-        ka_test_time += dt;
-        (right ? VR : VL) = sign * KaTestVoltage;
-        return true;
-    }
-
-    KaTestResult& result = ka_test_results[ka_test_run];
-    result = {0.0, -1.0, 0.0, 0.0};
-    if (ka_test_count >= 10)
-    {
-
-        // Steady-state speed from the last 10% of samples
-        size_t tail = ka_test_count / 10;
-        double w_ss = 0.0;
-        for (size_t i = ka_test_count - tail; i < ka_test_count; i++) w_ss += ka_test_w[i];
-        w_ss /= tail;
-
-        // Time to reach 63.2% of steady state, interpolated
-        double target = 0.632 * w_ss;
-        double tau = -1.0;
-        for (size_t i = 1; i < ka_test_count; i++)
-        {
-            if (ka_test_w[i] >= target && ka_test_w[i] > ka_test_w[i - 1])
-            {
-                double f = (target - ka_test_w[i - 1]) / (ka_test_w[i] - ka_test_w[i - 1]);
-                tau = ka_test_t[i - 1] + f * (ka_test_t[i] - ka_test_t[i - 1]);
-                break;
-            }
-        }
-
-        const MotorConstants& motor = right ? RightMotorModel : LeftMotorModel;
-        double Ks_model = (reverse ? motor.reverse : motor.forward).Ks;
-        double Kv_meas = w_ss > 0.0 ? (KaTestVoltage - Ks_model) / w_ss : 0.0;
-        result = {w_ss, tau, Kv_meas, Kv_meas * tau};
-        utils::debug_printf("Ka test %c%c: w_ss=%.2f rad/s, tau=%.4f s, Kv=%.4f, Ka=%.5f\n",
-            right ? 'R' : 'L', reverse ? 'R' : 'F', w_ss, tau, Kv_meas, Kv_meas * tau);
-    }
-
-    ka_test_run++;
-    if (ka_test_run >= KaTestRuns)
-    {
-        ka_test_run = -1;
-        return false;
-    }
-    ka_test_settling = true;
-    ka_test_time = 0.0;
-    return true;
-}
-
 void motion_zero_position(void)
 {
     angleL_total = 0.0;
     angleR_total = 0.0;
-    distanceL = 0.0;
-    distanceR = 0.0;
-    heading_offset = orientation.yaw();
-    target_heading = orientation.yaw();
+    distance = 0.0;
+    total_heading = 0.0;
 }
 
 // Feedforward voltage for one motor; the direction (and so the constants) follows the sign of target_w, or target_a at standstill.
@@ -316,6 +222,20 @@ static double motor_feedforward(const MotorConstants& m, double target_w, double
     double ks = target_w >= MinMotorRadPerSec ? d.Ks : (target_w <= -MinMotorRadPerSec ? -d.Ks : 0.0);
     return ks + d.Kv * target_w + d.Ka * target_a;
 }
+
+MotionState get_motion_state(void)
+{
+    return motion_state;
+}
+
+
+
+LineAvoidanceState line_avoidance_state = LineAvoidanceState::None;
+
+int initialized = 0;
+constexpr int InitializationDelay = 500; // in milliseconds
+utils::time_t initialization_start_time = 0;
+bool repeated_line = false;
 
 void motion_update(void)
 {
@@ -327,6 +247,7 @@ void motion_update(void)
     static double last_wR = 0.0;
     static double last_velocity = 0.0;
     static double acc_filt = 0.0;
+    static double last_heading = 0;
     utils::time_t t = utils::now();
     bool data_ready = imu.isDataReady() || gpio_get(IMU_INT_PIN); // INT1 is level-latched, so a high pin means unread data even if the edge was missed
     bool timeout = utils::hasElapsed_us(last_compute_time, imu_sample_period_us * 2, t);
@@ -372,40 +293,31 @@ void motion_update(void)
 
     angleL_total += d_angleL;
     angleR_total += d_angleR;
-    wL = d_angleL / dt;
-    wR = d_angleR / dt;
-    aL = (wL - last_wL) / dt;
-    aR = (wR - last_wR) / dt;
+    double wL = d_angleL / dt;
+    double wR = d_angleR / dt;
+    double aL = (wL - last_wL) / dt;
+    double aR = (wR - last_wR) / dt;
     last_wL = wL;
     last_wR = wR;
-    distanceL += d_angleL * WHEEL_RADIUS;
-    distanceR += d_angleR * WHEEL_RADIUS;
+    double d_distanceL = d_angleL * WHEEL_RADIUS;
+    double d_distanceR = d_angleR * WHEEL_RADIUS;
 
-    velocity = (wL + wR) * WHEEL_RADIUS / 2.0;
-    if (velocity > max_achieved_velocity)
-    {
-        max_achieved_velocity = velocity;
-        distance_at_max_velocity = distance;
-    }
-    acceleration = (velocity - last_velocity) / dt;
+    double velocity = (wL + wR) * WHEEL_RADIUS / 2.0;
+    double acceleration = (velocity - last_velocity) / dt;
     last_velocity = velocity;
     acc_filt = acceleration * a_alpha + acc_filt * (1.0 - a_alpha);
-    distance = (distanceL + distanceR) / 2.0;
-    odometry_heading = (distanceR - distanceL) / WHEEL_BASE;
+    distance += (d_distanceL + d_distanceR) / 2.0;
 
-    stationary = std::abs(a_filt.length() - 1.0) < a_min && std::abs(w_imu.length()) < w_min && std::abs(velocity) < v_min && std::abs(acceleration) < a_min;
+    bool stationary = std::abs(a_filt.length() - 1.0) < a_min && std::abs(w_imu.length()) < w_min && std::abs(velocity) < v_min && std::abs(acceleration) < a_min;
+
+    vmath::vector3d<double> linear_acceleration = {0.0}; // In the robot-heading-aligned frame with Z fixed up, in m/s^2, referenced to initial orientation at power on
+    vmath::vector3d<double> angular_velocity = {0.0}; // In the robot-heading-aligned frame with Z fixed up, in rad/s, referenced to initial orientation at power on
+    vmath::vector3d<double> angular_acceleration = {0.0}; // In the robot-heading-aligned frame with Z fixed up, in rad/s^2, referenced to initial orientation at power on
 
     //Update orientation even when stationary as the madgwic filter keeps maintains stable orientation estimation even without movement.
     orientation = q.eulerAngles(); // Orientation in world frame, referenced to initial orientation at power on, ZYX order (yaw-pitch-roll)
 
-    if (stationary)
-    {
-        // If the robot is stationary, we can't get meaningful velocity information from the IMU, so we just set them to zero to avoid drift and noise.
-        linear_acceleration = {0.0, 0.0, 0.0};
-        angular_velocity = {0.0, 0.0, 0.0};
-        angular_acceleration = {0.0, 0.0, 0.0};
-    }
-    else
+    if (!stationary)
     {
         auto q_tilt = vmath::quaternion<>::fromRotationZ(-orientation.yaw()) * q; // Remove heading to get tilt-compensated acceleration and angular velocity in the robot-heading-aligned frame
         linear_acceleration = ((q_tilt * a_filt * q_tilt.conjugate()).toVector() - g) * G; // Convert from g to m/s^2 and remove gravity
@@ -414,54 +326,161 @@ void motion_update(void)
         angular_velocity = new_angular_velocity; // Update angular velocity
     }
     //double w_heading = angular_velocity.yaw();
-    heading = vmath::angleDifference(orientation.yaw(), heading_offset);
     //double remaining_angle = vmath::angleDifference(target_heading, heading); // Remaining angle to the target (method handles wrapping)
     //double stopping_angle = (target_w * target_w) / (MaxAngularDeceleration); // Angle required to stop the robot from current angular velocity
     //stopping_angle = target_w >= 0 ? stopping_angle : -stopping_angle;
 
+    double d_heading = vmath::angleDifference(last_heading, orientation.yaw()); // Change in heading since last update
+    last_heading = orientation.yaw();
+    total_heading += d_heading; // Accumulate total heading change
     
+    
+    bool line_left = gpio_get(LINE_SENSOR_LEFT_PIN);
+    bool line_right = gpio_get(LINE_SENSOR_RIGHT_PIN);
+    bool line_detected = line_left || line_right;
+    bool moving = std::abs(velocity) > MinVelocity || std::abs(angular_velocity.yaw()) > MinAngularVelocity;
+    bool moving_forward = moving && velocity > MinVelocity;
+    //bool rotating_left = moving && angular_velocity.yaw() > 0;
 
-    double remaining_distance = target_distance - distance;
+    //bool in_circle = distance - line_detected_distance < -MinDistance;
 
     //double motors_w_avg = (wL + wR) / 2.0;
     //double motors_bemf_avg = std::min(Kv * std::abs(motors_w_avg), SystemVoltage - Ks); // Ks is already part of MinDeceleration
     //double possible_deceleration = (motors_bemf_avg / (SystemVoltage - Ks)) * (VoltageLimitedMaxDeceleration - VoltageLimitedMinDeceleration) + VoltageLimitedMinDeceleration;
+    
+    //utils::debug_printf("Remaining distance: %f, Heading error: %f, Moving: %d, Line detected: %d\nmoving_forward: %d, rotating_left: %d, angular_velocity: %f, velocity: %f\n", remaining_distance, heading_error, moving, line_detected, moving_forward, rotating_left, angular_velocity.yaw(), velocity);
 
-    bool line_now = line_sensor_left || line_sensor_right;
-    if (line_now && !line_active)
+    if (line_detected && !line_was_detected)
     {
-        move = false;
-        line_braking = true;
+        line_was_detected = true;
+        line_detected_distance = distance;
     }
-    line_active = line_now;
-
-    if (line_braking)
+    else if (!line_detected && line_was_detected)
     {
-        // Stop as fast as the grip allows, using the braking limit of the current direction of travel
-        const MotionLimits& travelling = target_v >= 0 ? ForwardLimits : ReverseLimits;
-        double max_step = travelling.deceleration * dt;
-        double step = std::clamp(-target_v, -max_step, max_step);
-        target_v += step;
-        target_a = step / dt;
-        target_w = 0;
-        if (target_v == 0.0)
+        if (distance - line_detected_distance < -MinDistance)
         {
-            line_braking = false;
-            pid_wL.reset();
-            pid_wR.reset();
-            pid_heading.reset();
+            line_was_detected = false;
         }
     }
-    else if (move)
+    
+
+    bool on_line = line_detected || line_was_detected;
+
+    switch (line_avoidance_state)
     {
+        case LineAvoidanceState::None:
+        {
+            if (on_line)
+            {
+                if (!repeated_line)
+                {
+                    motion_state = MotionState::Stop;
+                    line_avoidance_state = LineAvoidanceState::Stoping;
+                }
+            }
+            
+            if (!line_detected && repeated_line)
+            {
+                repeated_line = false;
+                line_was_detected = false;
+            }
+            break;
+        }
+        case LineAvoidanceState::Stoping:
+        {
+            if (motion_state == MotionState::Idle)
+            {
+                target_distance = line_detected_distance - LineReturnDistance;
+                target_heading = total_heading;
+                target_speed = 0;
+                motion_state = MotionState::Moving;
+                line_avoidance_state = LineAvoidanceState::Returning;
+            }
+            break;
+        }
+        case LineAvoidanceState::Returning:
+        {
+            if (motion_state == MotionState::Idle)
+            {
+                target_distance = 0;
+                target_heading = total_heading + M_PI;
+                target_speed = 0;
+                motion_state = MotionState::Turning;
+                line_avoidance_state = LineAvoidanceState::Turning;
+            }
+            break;
+        }
+        case LineAvoidanceState::Turning:
+        {
+            if (motion_state == MotionState::Idle)
+            {
+                if (line_detected)
+                {
+                    repeated_line = true;
+                    line_was_detected = false;
+                }
+                line_avoidance_state = LineAvoidanceState::None;
+            }
+            break;
+        }
+    }
+
+    double remaining_distance = target_distance - distance;
+    double heading_error = target_heading - total_heading; // Remaining heading error (method handles wrapping)
+    delta_heading = heading_error;
+
+    switch (motion_state)
+    {
+        case MotionState::Idle:
+        {
+            //distance = 0;
+            target_speed = 0;
+            target_distance = distance;
+            target_heading = total_heading;
+            
+
+            target_a = 0;
+            target_v = 0;
+            target_w = 0;
+            target_alpha = 0;
+            pid_heading.reset();
+            pid_wL.reset();
+            pid_wR.reset();
+            break;
+        }
+        case MotionState::Stop:
+        {
+            if (moving_forward)
+            {
+                target_a = -StopDeceleration;
+                target_v += target_a * dt;
+                target_w = 0;
+                target_alpha = 0;
+            }
+            else
+            {
+                target_a = 0;
+                target_v = 0;
+                target_w = 0;
+                target_alpha = 0;
+                pid_heading.reset();
+                pid_wL.reset();
+                pid_wR.reset();
+                motion_state = MotionState::Idle;
+            }
+            break;
+        }
+        case MotionState::Moving:
+        {
             // Limits for the direction we are heading in, and for the direction we are currently travelling (matters when braking or reversing).
             const MotionLimits& toward = remaining_distance >= 0 ? ForwardLimits : ReverseLimits;
             const MotionLimits& travelling = (target_v != 0.0 ? target_v : remaining_distance) >= 0 ? ForwardLimits : ReverseLimits;
 
+            double target_velocity = std::abs(target_speed) < MinVelocity ? 0 : target_speed;
+
             // Fastest speed from which we can still stop within the remaining distance; sign points toward the target.
-            double v_limit = std::min({toward.velocity, std::sqrt(2.0 * DecelPlanMargin * toward.deceleration * std::abs(remaining_distance)), PositionKp * std::abs(remaining_distance)});
+            double v_limit = std::min({toward.velocity, std::sqrt(target_velocity * target_velocity + 2.0 * DecelPlanMargin * toward.deceleration * std::abs(remaining_distance)), PositionKp * std::abs(remaining_distance) + std::abs(target_velocity)});
             double v_desired = remaining_distance >= 0 ? v_limit : -v_limit;
-            if (line_active && v_desired > 0.0) v_desired = 0.0; // Never drive forward over the line
 
             // Slew toward v_desired: brake rate when reducing speed or reversing, accel rate when speeding up.
             bool speeding_up = std::abs(v_desired) > std::abs(target_v) && (v_desired * target_v >= 0);
@@ -469,25 +488,82 @@ void motion_update(void)
             double step = std::clamp(v_desired - target_v, -max_step, max_step);
             target_v += step;
             target_a = step / dt;
-
-            target_w = hold_heading ? pid_heading.compute_radians(target_heading, orientation.yaw(), dt) : 0.0;
-
-            if (std::abs(remaining_distance) < 0.005 && std::abs(velocity) < 0.05)
+            target_w = pid_heading.compute(target_heading, total_heading, dt);
+            target_alpha = 0;
+            if (std::abs(remaining_distance) < MinDistance)
             {
-                target_a = 0;
-                target_v = 0;
-                target_w = 0;
-                pid_heading.reset();
-                pid_wL.reset(); // Stop the integrator winding up against static friction and hunting
-                pid_wR.reset();
+                if (target_velocity != 0)
+                {
+                    motion_state = MotionState::Coasting;
+                }
+                else
+                {
+                    motion_state = MotionState::Stop;
+                }
             }
+            break;
+        }
+        case MotionState::Turning:
+        {
+            double w_limit = std::min({RotationalLimits.velocity, std::sqrt(2.0 * DecelPlanMargin * RotationalLimits.deceleration * std::abs(heading_error)), HeadingKp * std::abs(heading_error)});
+            double w_desired = heading_error >= 0 ? w_limit : -w_limit;
+            bool speeding_up = std::abs(w_desired) > std::abs(target_w) && (w_desired * target_w >= 0);
+            double max_step = (speeding_up ? RotationalLimits.acceleration : RotationalLimits.deceleration) * dt;
+            double step = std::clamp(w_desired - target_w, -max_step, max_step);
+            target_v = 0;
+            target_a = 0;
+            target_w += step;
+            target_alpha = step / dt;
+            if (std::abs(heading_error) < MinHeadingError)
+            {
+                motion_state = MotionState::Stop;
+            }
+            break;
+        }
+        case MotionState::Coasting:
+        {
+            target_a = 0;
+            target_alpha = 0;
+            target_w = pid_heading.compute(target_heading, total_heading, dt);
+            
+            if (!moving)
+            {
+                motion_state = MotionState::Stop;
+            }
+            break;
+        }
     }
-    else
+
+    if (initialized != 2)
     {
+        target_speed = 0;
+        target_distance = distance;
+        target_heading = total_heading;
+
         target_a = 0;
         target_v = 0;
         target_w = 0;
         target_alpha = 0;
+        pid_heading.reset();
+        pid_wL.reset();
+        pid_wR.reset();
+        motion_state = MotionState::Idle;
+        line_avoidance_state = LineAvoidanceState::None;
+        line_was_detected = false;
+        line_detected_distance = distance;
+
+        if (initialized == 0)
+        {
+            initialization_start_time = utils::now();
+            initialized = 1;
+        }
+        else if (initialized == 1)
+        {
+            if (utils::hasElapsed_ms(initialization_start_time, InitializationDelay))
+            {
+                initialized = 2;
+            }
+        }
     }
     
     double clamped_v = std::clamp(target_v, -MaxVelocity, MaxVelocity); // Clamp target velocity to the maximum allowed velocity
@@ -503,59 +579,9 @@ void motion_update(void)
     double VoltageL = motor_feedforward(LeftMotorModel, target_wL, target_aL) + pid_wL.compute(target_wL, wL, dt);
     double VoltageR = motor_feedforward(RightMotorModel, target_wR, target_aR) + pid_wR.compute(target_wR, wR, dt);
 
-    double ka_VL, ka_VR;
-    if (ka_test_step(dt, wL, wR, ka_VL, ka_VR))
-    {
-        VoltageL = ka_VL;
-        VoltageR = ka_VR;
-    }
-
-    if (move)
-    {
-        if (std::max(std::abs(VoltageL), std::abs(VoltageR)) > SystemVoltage) voltage_saturated = true;
-        max_tracking_error = std::max(max_tracking_error, std::abs(target_v - velocity));
-        max_slip_accel = std::max(max_slip_accel, std::abs(acc_filt) - linear_acceleration.length());
-        max_heading_error = std::max(max_heading_error, std::abs(vmath::angleDifference(target_heading, orientation.yaw())));
-        if (start_delay_L_ms < 0.0 && std::abs(wL) > StartDetectRadPerSec) start_delay_L_ms = (t - move_start_time) / 1000.0;
-        if (start_delay_R_ms < 0.0 && std::abs(wR) > StartDetectRadPerSec) start_delay_R_ms = (t - move_start_time) / 1000.0;
-    }
-
-    //utils::debug_printf("VoltageL: %.3f, VoltageR: %.3f, target_wL: %.3f, target_wR: %.3f, target_aL: %.3f, target_aR: %.3f\n, target_v: %.3f, target_w: %.3f, target_a: %.3f, target_alpha: %.3f\n", VoltageL, VoltageR, target_wL, target_wR, target_aL, target_aR, target_v, target_w, target_a, target_alpha);
-
     double dutyCycleL = VoltageL / SystemVoltage;
     double dutyCycleR = VoltageR / SystemVoltage;
 
     left_motor.setPower(dutyCycleL); //The duty cycle is clamped in the setPower method
     right_motor.setPower(dutyCycleR);
-
-}
-
-void line_sensor_callback(void* context, uint32_t events)
-{
-    uint index = reinterpret_cast<uintptr_t>(context);
-
-    utils::debug_printf("Line sensor %d event: 0x%x\n", index, events);
-
-    bool state;
-    if (events & GPIO_IRQ_EDGE_RISE)
-    {
-        state = true;
-    }
-    else if (events & GPIO_IRQ_EDGE_FALL)
-    {
-        state = false;
-    }
-    else
-    {
-        return; // Unhandled event type
-    }
-    
-    if (index == front_left_line_sensor_index)
-    {
-        line_sensor_left = state;
-    }
-    else if (index == front_right_line_sensor_index)
-    {
-        line_sensor_right = state;
-    }
 }

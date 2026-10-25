@@ -48,6 +48,14 @@ void handle_remote(void)
         // Handle the received command as needed
         switch(command)
         {
+        case IrCommand::CH1:
+            if (repeat) break;
+            motion_test(true); // Run motion test when CH1 is pressed
+            break;
+        case IrCommand::CH2:
+            if (repeat) break;
+            motion_test(true); // Run motion test when CH2 is pressed
+            break;
         case IrCommand::UP:
             if (repeat) break;
             menuNavigate(-1);
@@ -74,8 +82,7 @@ void handle_remote(void)
             break;
         case IrCommand::CHUP:
             if (repeat) break;
-            motion_ka_test(); // Run Ka step-response test when CHUP is pressed
-            //motion_turn_test(true); // Run turn test when CHUP is pressed
+            motion_turn_test(true); // Run turn test when CHUP is pressed
             break;
         case IrCommand::CHDOWN:
             if (repeat) break;
@@ -141,12 +148,12 @@ void handle_line_calibration_command(void)
         if (command == IR_CODE_EXIT) break;
         if (command == IR_CODE_LEFT)
         {
-            calibrate_line_sensor(front_left_line_sensor_index);
+            calibrate_line_sensor(0);
             break;
         }
         if (command == IR_CODE_RIGHT)
         {
-            calibrate_line_sensor(front_right_line_sensor_index);
+            calibrate_line_sensor(1);
             break;
         }
     }

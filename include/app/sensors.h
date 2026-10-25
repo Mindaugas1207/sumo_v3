@@ -3,11 +3,11 @@
 
 #include "distance_sensor.h"
 
-#include <vector>
+#include <array>
 
 struct SensorData
 {
-    std::vector<int> distanceSensorValues;
+    std::array<int, 7> distanceSensorValues;
     bool distanceSensorDetected[7];
     bool targetDetected;
 };
