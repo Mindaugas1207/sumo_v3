@@ -43,16 +43,17 @@ int main()
 
         if (start_state)
         {
-            handle_combat();
+            //handle_combat();
         }
         else
         {
-            handle_remote();
-            handle_display();
+            
+            
             STATUS_Led.update();
         }
-
+        handle_remote();
         motion_update();
+        handle_display();
     }
 }
 

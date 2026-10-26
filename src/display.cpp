@@ -113,7 +113,7 @@ public:
         int y = TOP_RIBON_SIZE;
         int textHeight = g.getFontHeight();
         char buffer[50];
-
+/*
         SensorData sensorData = get_sensor_data();
         snprintf(buffer, sizeof(buffer), "%.4d %.4d %.4d %.4d %.4d %.4d %.4d", 
                 sensorData.distanceSensorValues[0],
@@ -123,6 +123,44 @@ public:
                 sensorData.distanceSensorValues[4],
                 sensorData.distanceSensorValues[5],
                 sensorData.distanceSensorValues[6]);
+        g.drawText(x, y, buffer, -1, -1, Color::White());
+        y += textHeight;
+        */
+        vmath::vector2d<double> raw = get_ring_raw();
+        vmath::vector2d<double> offset = get_ring_offset();
+        vmath::vector2d<double> pos = get_ring_position();
+        double sigma = get_ring_sigma();
+        vmath::vector2d<double> leftPos = get_line_sensor_left_pos();
+        vmath::vector2d<double> rightPos = get_line_sensor_right_pos();
+        bool left_hit = get_ring_left_hit();
+        bool right_hit = get_ring_right_hit();
+        bool left_first = get_line_sensor_left_first();
+        double distance_to_line = get_distance_to_line();
+        snprintf(buffer, sizeof(buffer), "H: %.2f T: %.2f D: %.2f", total_heading * 180.0 / M_PI, target_heading * 180.0 / M_PI, delta_heading * 180.0 / M_PI);
+        g.drawText(x, y, buffer, -1, -1, Color::White());
+        y += textHeight;
+        snprintf(buffer, sizeof(buffer), "Distance to Line: %.2f", distance_to_line);
+        g.drawText(x, y, buffer, -1, -1, Color::White());
+        y += textHeight;
+        snprintf(buffer, sizeof(buffer), "Raw: %.2f %.2f", raw.X, raw.Y);
+        g.drawText(x, y, buffer, -1, -1, Color::White());
+        y += textHeight;
+        snprintf(buffer, sizeof(buffer), "Offset: %.2f %.2f", offset.X, offset.Y);
+        g.drawText(x, y, buffer, -1, -1, Color::White());
+        y += textHeight;
+        snprintf(buffer, sizeof(buffer), "Pos: %.2f %.2f", pos.X, pos.Y);
+        g.drawText(x, y, buffer, -1, -1, Color::White());
+        y += textHeight;
+        snprintf(buffer, sizeof(buffer), "Sigma: %.2f", sigma);
+        g.drawText(x, y, buffer, -1, -1, Color::White());
+        y += textHeight;
+        snprintf(buffer, sizeof(buffer), "Left Pos: %.2f %.2f", leftPos.X, leftPos.Y);
+        g.drawText(x, y, buffer, -1, -1, Color::White());
+        y += textHeight;
+        snprintf(buffer, sizeof(buffer), "Right Pos: %.2f %.2f", rightPos.X, rightPos.Y);
+        g.drawText(x, y, buffer, -1, -1, Color::White());
+        y += textHeight;
+        snprintf(buffer, sizeof(buffer), "LH:%d RH:%d LF:%d", left_hit, right_hit, left_first);
         g.drawText(x, y, buffer, -1, -1, Color::White());
         y += textHeight;
 

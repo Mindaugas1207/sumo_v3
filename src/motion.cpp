@@ -109,12 +109,14 @@ constexpr double RingRadius = RingDiameter / 2.0;
 constexpr double RingWhiteWidth = 0.025; // Width of the white line on the ring, in meters.
 constexpr double RingInnerRadius = RingRadius - RingWhiteWidth; // Inner radius of the ring, in meters.
 constexpr double RingDriftK = 0.03;
-constexpr double LineSensorLeftX = -0.04;
-constexpr double LineSensorRightX = 0.04;
-constexpr double LineSensorY = 0.05;
+constexpr double LineSensorLeftX = -0.043;
+constexpr double LineSensorRightX = 0.043;
+constexpr double LineSensorY = 0.082;
 constexpr double RingMinChord = 0.015;// Minimum useful line sensor chord length, in meters.
-constexpr double LineMeasureSigma = 0.005;
+constexpr double LineMeasureSigma = 0.001;
 constexpr double RingMinRadialR = 1e-3;
+
+
 
 struct RingTracker
 {
@@ -130,6 +132,8 @@ struct RingTracker
     bool left_first = false;
 
     vmath::vector2d<double> Position() const { return raw_position - ring_center_offset; }
+
+    double GetDistanceToLine(double heading) const { return distanceToLine(heading); }
     
 
     void updatePosition(double distance, double heading)
@@ -142,22 +146,24 @@ struct RingTracker
 
     void updateLineSensorLeft(double heading) //Left sensor has "hit"
     {
+        if (line_sensor_left_hit) return;
         line_sensor_left_hit = true;
         left_first = !line_sensor_right_hit;
         double sh = sin(heading);
         double ch = cos(heading);
-        line_sensor_left_position = raw_position + vmath::vector2d<double>{LineSensorLeftX * ch - LineSensorY * sh,
-                                                                         LineSensorLeftX * sh + LineSensorY * ch};
+        line_sensor_left_position = raw_position + vmath::vector2d<double>{LineSensorY * ch - LineSensorLeftX * sh,
+                                                                         LineSensorY * sh + LineSensorLeftX * ch};
 
     }
     void updateLineSensorRight(double heading) //Right sensor has "hit"
     {
+        if (line_sensor_right_hit) return;
         line_sensor_right_hit = true;
         left_first = line_sensor_left_hit;
         double sh = sin(heading);
         double ch = cos(heading);
-        line_sensor_right_position = raw_position + vmath::vector2d<double>{LineSensorRightX * ch - LineSensorY * sh,
-                                                                          LineSensorRightX * sh + LineSensorY * ch};
+        line_sensor_right_position = raw_position + vmath::vector2d<double>{LineSensorY * ch - LineSensorRightX * sh,
+                                                                          LineSensorY * sh + LineSensorRightX * ch};
     }
     void finalizeLineSensorPositions(void)
     {
@@ -184,15 +190,27 @@ struct RingTracker
         left_first = false;
     }
 
+    void reset(void)
+    {
+        line_sensor_left_hit = false;
+        line_sensor_right_hit = false;
+        left_first = false;
+        raw_position = vmath::vector2d<double>{0.0, 0.0};
+        ring_center_offset = vmath::vector2d<double>{RingRadius, 0};
+        sigma = 0.001;
+    }
+
 private:
     void radialUpdate(vmath::vector2d<double> A)
     {
         auto delta = A - ring_center_offset;
         double r = delta.length();
-        if (r < RingMinRadialR) return;
+        //if (r < RingMinRadialR) return;
         double K = sigma * sigma / (sigma * sigma + LineMeasureSigma * LineMeasureSigma);
         ring_center_offset = ring_center_offset - delta * (K * (RingInnerRadius - r) / r);
         sigma = std::max(sigma * (1.0 - K), LineMeasureSigma);
+        //utils::debug_printf("radialUpdate: A.x: %.2f, A.y: %.2f, ring_center_offset.x: %.2f, ring_center_offset.y: %.2f, sigma: %.6f\n", A.X, A.Y, ring_center_offset.X, ring_center_offset.Y, sigma);
+        //utils::debug_printf("radialUpdate: delta.x: %.2f, delta.y: %.2f, r: %.6f, K: %.6f\n", delta.X, delta.Y, r, K);
     }
 
     bool chordUpdate(vmath::vector2d<double> A, vmath::vector2d<double> B)
@@ -209,7 +227,7 @@ private:
         auto dc1 = raw_position - center1;
         auto dc2 = raw_position - center2;
         vmath::vector2d<double> center;
-        if ((dc1.dot(dc1)) < (dc2.dot(dc2)))
+        if ((dc1.dot(dc1)) > (dc2.dot(dc2)))
             center = center1;
         else
             center = center2;
@@ -223,16 +241,25 @@ private:
         auto delta = center - ring_center_offset;
         ring_center_offset = ring_center_offset + er * (Kr * delta.dot(er)) + et * (Kt * delta.dot(et));
         sigma = std::max(sigma * (1.0 - Kt), LineMeasureSigma);
+        //utils::debug_printf("chordUpdate: A.x: %.2f, A.y: %.2f, B.x: %.2f, B.y: %.2f, ring_center_offset.x: %.2f, ring_center_offset.y: %.2f, sigma: %.6f\n", A.X, A.Y, B.X, B.Y, ring_center_offset.X, ring_center_offset.Y, sigma);
+        //utils::debug_printf("chordUpdate: delta.x: %.2f, delta.y: %.2f, Kr: %.6f, Kt: %.6f\n", delta.X, delta.Y, Kr, Kt);
+        //utils::debug_printf("chordUpdate: center1.x: %.2f, center1.y: %.2f, center2.x: %.2f, center2.y: %.2f, center.x: %.2f, center.y: %.2f\n", center1.X, center1.Y, center2.X, center2.Y, center.X, center.Y);
+        //utils::debug_printf("chordUpdate: er.x: %.2f, er.y: %.2f, et.x: %.2f, et.y: %.2f\n", er.X, er.Y, et.X, et.Y);
+        //utils::debug_printf("chordUpdate: raw_position.x: %.2f, raw_position.y: %.2f\n", raw_position.X, raw_position.Y);
+        //utils::debug_printf("chordUpdate: midpoint.x: %.2f, midpoint.y: %.2f\n", midpoint.X, midpoint.Y);
+        //utils::debug_printf("chordUpdate: chord_length: %.2f\n", chord_length);
         return true;
     }
 
     double distanceToLine(double heading) const
     {
         auto x = vmath::vector2d<double>{vmath::cos(heading), vmath::sin(heading)};
-        auto p = Position() + x;
+        auto p = Position() + x * LineSensorY;
         double b = p.dot(x);
         double disc = std::max(b * b - (p.dot(p) - RingInnerRadius * RingInnerRadius), 0.0);
-        return std::max(-b + vmath::sqrt(disc) - sigma, 0.0);
+        double d = std::max(-b + vmath::sqrt(disc) - sigma, 0.0);
+        //utils::debug_printf("x: %.2f, y: %.2f, p.x: %.2f, p.y: %.2f, b: %.2f, disc: %.2f, d: %.2f\n", x.X, x.Y, p.X, p.Y, b, disc, d);
+        return d;
     }
 };
 
@@ -284,6 +311,9 @@ double target_speed = 0.0; // Desired speed at the end of the move
 double target_heading = 0.0;//rad
 bool hold_heading = false; // True for straight moves (no commanded turn)
 
+constexpr double vel_alpha = 0.1; // Low-pass filter coefficient for velocity filtering
+double velocity_filtered = 0.0;
+
 PID pid_wL(0.5, 2.0, 0.0, 1.5, 2.5);
 PID pid_wR(0.5, 2.0, 0.0, 1.5, 2.5);
 PID pid_heading(10.0, 0.5, 0.0, 5.0, 20.0); // Heading error in rad, output is target_w in rad/s
@@ -295,13 +325,66 @@ bool repeated_line = false;
 bool enabled = false;
 LineAvoidanceState line_avoidance_state = LineAvoidanceState::None;
 
+RingTracker ring_tracker;
+
 MotionState motion_state = MotionState::Idle;
+
+vmath::vector2d<double> get_ring_position(void)
+{
+    return ring_tracker.Position();
+}
+
+vmath::vector2d<double> get_ring_offset(void)
+{
+    return ring_tracker.ring_center_offset;
+}
+
+double get_ring_sigma(void)
+{
+    return ring_tracker.sigma;
+}
+
+vmath::vector2d<double> get_ring_raw(void)
+{
+    return ring_tracker.raw_position;
+}
+
+bool get_ring_left_hit(void)
+{
+    return ring_tracker.line_sensor_left_hit;
+}
+
+bool get_ring_right_hit(void)
+{
+    return ring_tracker.line_sensor_right_hit;
+}
+
+vmath::vector2d<double> get_line_sensor_left_pos(void)
+{
+    return ring_tracker.line_sensor_left_position;
+}
+
+vmath::vector2d<double> get_line_sensor_right_pos(void)
+{
+    return ring_tracker.line_sensor_right_position;
+}
+
+bool get_line_sensor_left_first()
+{
+    return ring_tracker.left_first;
+}
+
+double get_distance_to_line(void)
+{
+    return ring_tracker.GetDistanceToLine(total_heading);
+}
 
 void motion_init(void)
 {
     accelBias = active_config.accelBias;
     gyroBias = active_config.gyroBias;
     // Initialize line sensors to false
+    ring_tracker.reset();
 }
 
 void motion_move(double delta_distance, double delta_angle, double coasting_velocity)
@@ -450,6 +533,8 @@ void motion_update(void)
     double velocity = (wL + wR) * WHEEL_RADIUS / 2.0;
     double acceleration = (velocity - last_velocity) / dt;
     last_velocity = velocity;
+
+    velocity_filtered = velocity * vel_alpha + velocity_filtered * (1.0 - vel_alpha);
     acc_filt = acceleration * a_alpha + acc_filt * (1.0 - a_alpha);
     distance += (d_distanceL + d_distanceR) / 2.0;
 
@@ -485,6 +570,10 @@ void motion_update(void)
     bool line_detected = line_left || line_right;
     bool moving = std::abs(velocity) > MinVelocity || std::abs(angular_velocity.yaw()) > MinAngularVelocity;
     bool moving_forward = moving && velocity > MinVelocity;
+
+    ring_tracker.updatePosition(distance, total_heading);
+    
+
     //bool rotating_left = moving && angular_velocity.yaw() > 0;
 
     //bool in_circle = distance - line_detected_distance < -MinDistance;
@@ -507,7 +596,19 @@ void motion_update(void)
             line_was_detected = false;
         }
     }
-    
+
+    if (line_left)
+    {
+        ring_tracker.updateLineSensorLeft(total_heading);
+    }
+    if (line_right)
+    {
+        ring_tracker.updateLineSensorRight(total_heading);
+    }
+    if (!line_detected)
+    {
+        ring_tracker.finalizeLineSensorPositions();
+    }
 
     bool on_line = line_detected || line_was_detected;
 
@@ -515,6 +616,8 @@ void motion_update(void)
     {
         case LineAvoidanceState::None:
         {
+            
+
             if (on_line)
             {
                 if (!repeated_line)
@@ -547,6 +650,7 @@ void motion_update(void)
         {
             if (motion_state == MotionState::Idle)
             {
+                
                 if (line_detected)
                 {
                     repeated_line = true;
@@ -660,8 +764,8 @@ void motion_update(void)
         case MotionState::Coasting:
         {
             double target_velocity = std::abs(target_speed) < MinVelocity ? 0 : target_speed;
-            double v_current = (target_v + velocity) / 2; // Average the measured velocity and the setpoint to reduce oscillations
-            double step = std::clamp(target_velocity - v_current, -ForwardLimits.deceleration * dt, ForwardLimits.acceleration * dt);
+            double v_current = target_v; // Average the measured velocity and the setpoint to reduce oscillations
+            double step = std::clamp(target_velocity - v_current, -ForwardLimits.deceleration / 2 * dt, ForwardLimits.acceleration / 2 * dt);
             target_v += step;
             target_a = step / dt;
             target_w = pid_heading.compute(target_heading, total_heading, dt);
@@ -690,6 +794,7 @@ void motion_update(void)
         pid_heading.reset();
         pid_wL.reset();
         pid_wR.reset();
+        ring_tracker.reset();
         motion_state = MotionState::Idle;
         line_avoidance_state = LineAvoidanceState::None;
         line_was_detected = false;
