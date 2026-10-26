@@ -83,13 +83,13 @@ constexpr std::array<unsigned int, num_distance_sensors> distance_sensor_pins = 
     DISTANCE_SENSOR_RIGHT90_PIN,
     #endif
     #if ROBOT_VERSION == 2
-    DISTANCE_SENSOR_RIGHT0_PIN,
-    DISTANCE_SENSOR_RIGHT45_PIN,
-    DISTANCE_SENSOR_LEFT35_PIN,
-    DISTANCE_SENSOR_CENTER_PIN,
-    DISTANCE_SENSOR_RIGHT35_PIN,
-    DISTANCE_SENSOR_LEFT45_PIN,
-    DISTANCE_SENSOR_LEFT0_PIN,
+    DISTANCE_SENSOR_NEG_45_PIN,
+    DISTANCE_SENSOR_NEG_25_PIN,
+    DISTANCE_SENSOR_NEG_1P5_PIN,
+    DISTANCE_SENSOR_CENTER_0_PIN,
+    DISTANCE_SENSOR_POS_1P5_PIN,
+    DISTANCE_SENSOR_POS_25_PIN,
+    DISTANCE_SENSOR_POS_45_PIN,
     #endif
 };
 
@@ -120,13 +120,13 @@ constexpr DistanceSensor::config distance_sensor_configs[num_distance_sensors] =
     distance_sensor_config, //90 right
     #endif
     #if ROBOT_VERSION == 2
-    distance_sensor_config, //0 right
-    distance_sensor_config, //45 right
-    distance_sensor_config, //35 left
-    distance_sensor_config, //center
-    distance_sensor_config, //35 right
-    distance_sensor_config, //45 left
-    distance_sensor_config, //0 left
+    distance_sensor_config,
+    distance_sensor_config,
+    distance_sensor_config,
+    distance_sensor_config,
+    distance_sensor_config,
+    distance_sensor_config,
+    distance_sensor_config,
     #endif
 };
 

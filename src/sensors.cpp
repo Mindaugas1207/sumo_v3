@@ -8,6 +8,18 @@ constexpr double distanceFilter = 0.0;
 
 using SensorArray = std::array<int, num_distance_sensors>;
 
+//Sensor angles are from left to right, relative to the front of the robot,
+//0 is the front of the robot
+constexpr double sensorAngles[num_distance_sensors] = {
+    -45,  // Sensor 0 angle
+    -25.0, // Sensor 1 angle
+    -1.5, // Sensor 2 angle
+    0.0,// Sensor 3 angle
+    1.5,// Sensor 4 angle
+    25.0,// Sensor 5 angle
+    45.0,// Sensor 6 angle
+};
+
 SensorArray filteredBuffer;
 SensorArray sensorBufferA;
 SensorArray sensorBufferB;

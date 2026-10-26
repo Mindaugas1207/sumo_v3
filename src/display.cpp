@@ -116,13 +116,13 @@ public:
 
         SensorData sensorData = get_sensor_data();
         snprintf(buffer, sizeof(buffer), "%.4d %.4d %.4d %.4d %.4d %.4d %.4d", 
-                sensorData.distanceSensorValues[6],
-                sensorData.distanceSensorValues[4],
+                sensorData.distanceSensorValues[0],
+                sensorData.distanceSensorValues[1],
                 sensorData.distanceSensorValues[2],
                 sensorData.distanceSensorValues[3],
+                sensorData.distanceSensorValues[4],
                 sensorData.distanceSensorValues[5],
-                sensorData.distanceSensorValues[1],
-                sensorData.distanceSensorValues[0]);
+                sensorData.distanceSensorValues[6]);
         g.drawText(x, y, buffer, -1, -1, Color::White());
         y += textHeight;
 

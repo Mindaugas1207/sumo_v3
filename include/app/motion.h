@@ -7,10 +7,12 @@ void motion_init(void);
 void motion_update(void);
 
 // Relative move: delta_distance in m (+forward), delta_angle in rad (+CCW). Either may be 0.
-void motion_move(double delta_distance, double delta_angle);
+constexpr double CoastingVelocity = 0.4; // Velocity to maintain during coasting, in m/s.
+void motion_move(double delta_distance, double delta_angle, double coasting_velocity = CoastingVelocity);
 void motion_turn_test(bool left);
 void motion_test(bool forward);
 void motion_zero_position(void);
+void motion_stop(void);
 
 enum class MotionState
 {
@@ -24,18 +26,15 @@ enum class LineAvoidanceState
 {
     None,
     Stoping,
-    Returning,
-    Turning
+    Returning
 };
 extern double delta_heading;
 extern double target_heading;
 extern double total_heading;
-
-extern MotionState motion_state;
-extern LineAvoidanceState line_avoidance_state;
 extern double distance;
-extern bool tst;
 
 MotionState get_motion_state(void);
+LineAvoidanceState get_line_avoidance_state(void);
+void motion_set_enabled(bool);
 
 #endif // APP_MOTION_H

@@ -520,10 +520,59 @@ namespace vmath
             return lhs;
         }
 
+        /*! @brief Calculates the dot product of this vector with another vector.
+         *  @param other The other vector.
+         *  @return The dot product of the two vectors.
+         */
+        constexpr double dot(const vector2d &other) const
+        {
+            return this->X * other.X + this->Y * other.Y;
+        }
+
+        /*! @brief Calculates the dot product of two vectors.
+         *  @param a The first vector.
+         *  @param b The second vector.
+         *  @return The dot product of the two vectors.
+         */
+        static constexpr double dot(const vector2d &a, const vector2d &b)
+        {
+            return a.X * b.X + a.Y * b.Y;
+        }
+
+        /*! @brief Calculates the cross product (2D equivalent) of this vector with another vector.
+         *  @param other The other vector.
+         *  @return The cross product of the two vectors.
+         */
+        constexpr double cross(const vector2d &other) const
+        {
+            return this->X * other.Y - this->Y * other.X;
+        }
+
+        /*! @brief Calculates the cross product (2D equivalent) of two vectors.
+         *  @param a The first vector.
+         *  @param b The second vector.
+         *  @return The cross product of the two vectors.
+         */
+        static constexpr double cross(const vector2d &a, const vector2d &b)
+        {
+            return a.X * b.Y - a.Y * b.X;
+        }
+
         /*! @brief Calculates the length (magnitude) of the vector.
          *  @return The length of the vector.
          */
         constexpr T length() const { return sqrt(this->X * this->X + this->Y * this->Y); }
+
+        /*! @brief Normalizes the vector, making its length equal to 1.
+         *  @return A new vector that is the normalized version of this vector.
+         */
+        constexpr vector2d normalize(void) { return *this * invsqrt(X * X + Y * Y); }
+
+        /*! @brief Normalizes a given vector, making its length equal to 1.
+         *  @param vec The vector to normalize.
+         *  @return A new vector that is the normalized version of the input vector.
+         */
+        static constexpr vector2d normalize(const vector2d &vec) { return vec * invsqrt(vec.X * vec.X + vec.Y * vec.Y); }
 
         /*! @brief Calculates the angle of the vector relative to the positive X-axis.
          *  @return The angle of the vector in radians.

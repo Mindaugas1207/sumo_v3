@@ -103,7 +103,139 @@ constexpr double MinVelocity = MinWheelMps / 5; // Minimum velocity to consider 
 constexpr double MinAngularVelocity = MinRobotTurningRadS / 4; // Minimum angular velocity to consider the robot as having reached its target, in rad/s.
 constexpr double StopDeceleration = 20.0; // Deceleration used during an emergency stop, in m/s^2.
 constexpr double LineReturnDistance = 0.1; // Distance to move back after detecting a line, in meters.
-constexpr double CoastingVelocity = 0.4; // Velocity to maintain during coasting, in m/s.
+
+constexpr double RingDiameter = 0.77;
+constexpr double RingRadius = RingDiameter / 2.0;
+constexpr double RingWhiteWidth = 0.025; // Width of the white line on the ring, in meters.
+constexpr double RingInnerRadius = RingRadius - RingWhiteWidth; // Inner radius of the ring, in meters.
+constexpr double RingDriftK = 0.03;
+constexpr double LineSensorLeftX = -0.04;
+constexpr double LineSensorRightX = 0.04;
+constexpr double LineSensorY = 0.05;
+constexpr double RingMinChord = 0.015;// Minimum useful line sensor chord length, in meters.
+constexpr double LineMeasureSigma = 0.005;
+constexpr double RingMinRadialR = 1e-3;
+
+struct RingTracker
+{
+    vmath::vector2d<double> raw_position;
+    vmath::vector2d<double> ring_center_offset;
+    double sigma = 100.0;
+    double lastDistance = 0;
+
+    vmath::vector2d<double> line_sensor_left_position;
+    vmath::vector2d<double> line_sensor_right_position;
+    bool line_sensor_left_hit = false;
+    bool line_sensor_right_hit = false;
+    bool left_first = false;
+
+    vmath::vector2d<double> Position() const { return raw_position - ring_center_offset; }
+    
+
+    void updatePosition(double distance, double heading)
+    {
+        double deltaDistance = distance - lastDistance;
+        lastDistance = distance;
+        raw_position += vmath::vector2d<double>{cos(heading), sin(heading)} * deltaDistance;
+        sigma = std::min(sigma + RingDriftK * std::abs(deltaDistance), RingInnerRadius);
+    }
+
+    void updateLineSensorLeft(double heading) //Left sensor has "hit"
+    {
+        line_sensor_left_hit = true;
+        left_first = !line_sensor_right_hit;
+        double sh = sin(heading);
+        double ch = cos(heading);
+        line_sensor_left_position = raw_position + vmath::vector2d<double>{LineSensorLeftX * ch - LineSensorY * sh,
+                                                                         LineSensorLeftX * sh + LineSensorY * ch};
+
+    }
+    void updateLineSensorRight(double heading) //Right sensor has "hit"
+    {
+        line_sensor_right_hit = true;
+        left_first = line_sensor_left_hit;
+        double sh = sin(heading);
+        double ch = cos(heading);
+        line_sensor_right_position = raw_position + vmath::vector2d<double>{LineSensorRightX * ch - LineSensorY * sh,
+                                                                          LineSensorRightX * sh + LineSensorY * ch};
+    }
+    void finalizeLineSensorPositions(void)
+    {
+        if (line_sensor_left_hit && line_sensor_right_hit)
+        {
+            if (left_first)
+            {
+                if (!chordUpdate(line_sensor_left_position, line_sensor_right_position))
+                    radialUpdate(line_sensor_left_position);
+            }
+            else
+            {
+                if (!chordUpdate(line_sensor_right_position, line_sensor_left_position))
+                    radialUpdate(line_sensor_right_position);
+            }
+        }
+        else if (line_sensor_left_hit)
+            radialUpdate(line_sensor_left_position);
+        else if (line_sensor_right_hit)
+            radialUpdate(line_sensor_right_position);
+
+        line_sensor_left_hit = false;
+        line_sensor_right_hit = false;
+        left_first = false;
+    }
+
+private:
+    void radialUpdate(vmath::vector2d<double> A)
+    {
+        auto delta = A - ring_center_offset;
+        double r = delta.length();
+        if (r < RingMinRadialR) return;
+        double K = sigma * sigma / (sigma * sigma + LineMeasureSigma * LineMeasureSigma);
+        ring_center_offset = ring_center_offset - delta * (K * (RingInnerRadius - r) / r);
+        sigma = std::max(sigma * (1.0 - K), LineMeasureSigma);
+    }
+
+    bool chordUpdate(vmath::vector2d<double> A, vmath::vector2d<double> B)
+    {
+        auto chord = B - A;
+        double chord_length = chord.length();
+        if (chord_length < RingMinChord || chord_length > 2 * RingInnerRadius) return false;
+        auto u = chord * (1.0 / chord_length);
+        auto n = vmath::vector2d<double>{-u.Y, u.X};
+        auto midpoint = (A + B) * 0.5;
+        double h = vmath::sqrt(RingInnerRadius * RingInnerRadius - (chord_length * chord_length) * 0.25);
+        auto center1 = midpoint + n * h;
+        auto center2 = midpoint - n * h;
+        auto dc1 = raw_position - center1;
+        auto dc2 = raw_position - center2;
+        vmath::vector2d<double> center;
+        if ((dc1.dot(dc1)) < (dc2.dot(dc2)))
+            center = center1;
+        else
+            center = center2;
+        auto er = midpoint - center;
+        er.normalize();
+        auto et = vmath::vector2d<double>{-er.Y, er.X};
+        double s2 = sigma * sigma;
+        double st = 1.4 * LineMeasureSigma * RingInnerRadius / chord_length;
+        double Kr = s2 / (s2 + LineMeasureSigma * LineMeasureSigma);
+        double Kt = s2 / (s2 + st * st);
+        auto delta = center - ring_center_offset;
+        ring_center_offset = ring_center_offset + er * (Kr * delta.dot(er)) + et * (Kt * delta.dot(et));
+        sigma = std::max(sigma * (1.0 - Kt), LineMeasureSigma);
+        return true;
+    }
+
+    double distanceToLine(double heading) const
+    {
+        auto x = vmath::vector2d<double>{vmath::cos(heading), vmath::sin(heading)};
+        auto p = Position() + x;
+        double b = p.dot(x);
+        double disc = std::max(b * b - (p.dot(p) - RingInnerRadius * RingInnerRadius), 0.0);
+        return std::max(-b + vmath::sqrt(disc) - sigma, 0.0);
+    }
+};
+
 
 constexpr double maxVelocityForStoppingDistance(
     double stopping_distance,
@@ -155,14 +287,14 @@ bool hold_heading = false; // True for straight moves (no commanded turn)
 PID pid_wL(0.5, 2.0, 0.0, 1.5, 2.5);
 PID pid_wR(0.5, 2.0, 0.0, 1.5, 2.5);
 PID pid_heading(10.0, 0.5, 0.0, 5.0, 20.0); // Heading error in rad, output is target_w in rad/s
-/*
-enum class MotionState
-{
-    Idle,
-    EmergencyStop,
-    Moving,
-    Turning
-};*/
+
+int initialized = 0;
+constexpr int InitializationDelay = 500; // in milliseconds
+utils::time_t initialization_start_time = 0;
+bool repeated_line = false;
+bool enabled = false;
+LineAvoidanceState line_avoidance_state = LineAvoidanceState::None;
+
 MotionState motion_state = MotionState::Idle;
 
 void motion_init(void)
@@ -172,7 +304,7 @@ void motion_init(void)
     // Initialize line sensors to false
 }
 
-void motion_move(double delta_distance, double delta_angle)
+void motion_move(double delta_distance, double delta_angle, double coasting_velocity)
 {
     if (motion_state != MotionState::Idle)
         return;
@@ -190,10 +322,17 @@ void motion_move(double delta_distance, double delta_angle)
     {
         target_distance = distance + delta_distance;
         target_heading = total_heading;
-        target_speed = delta_distance > 0 ? CoastingVelocity : 0;
+        target_speed = delta_distance > 0 ? coasting_velocity : 0;
         motion_state = MotionState::Moving; // If a distance is specified, we are moving
     }
     
+}
+
+void motion_stop(void)
+{
+    if (motion_state == MotionState::Idle || line_avoidance_state != LineAvoidanceState::None)
+        return;
+    motion_state = MotionState::Stop;
 }
 
 void motion_test(bool forward)
@@ -230,12 +369,18 @@ MotionState get_motion_state(void)
 
 
 
-LineAvoidanceState line_avoidance_state = LineAvoidanceState::None;
 
-int initialized = 0;
-constexpr int InitializationDelay = 500; // in milliseconds
-utils::time_t initialization_start_time = 0;
-bool repeated_line = false;
+LineAvoidanceState get_line_avoidance_state(void)
+{
+    return line_avoidance_state;
+}
+
+void motion_set_enabled(bool en)
+{
+    enabled = en;
+}
+
+
 
 void motion_update(void)
 {
@@ -402,23 +547,15 @@ void motion_update(void)
         {
             if (motion_state == MotionState::Idle)
             {
-                target_distance = 0;
-                target_heading = total_heading + M_PI;
-                target_speed = 0;
-                motion_state = MotionState::Turning;
-                line_avoidance_state = LineAvoidanceState::Turning;
-            }
-            break;
-        }
-        case LineAvoidanceState::Turning:
-        {
-            if (motion_state == MotionState::Idle)
-            {
                 if (line_detected)
                 {
                     repeated_line = true;
                     line_was_detected = false;
                 }
+                target_distance = 0;
+                target_heading = total_heading + M_PI;
+                target_speed = 0;
+                motion_state = MotionState::Turning;
                 line_avoidance_state = LineAvoidanceState::None;
             }
             break;
@@ -522,10 +659,14 @@ void motion_update(void)
         }
         case MotionState::Coasting:
         {
-            target_a = 0;
-            target_alpha = 0;
+            double target_velocity = std::abs(target_speed) < MinVelocity ? 0 : target_speed;
+            double v_current = (target_v + velocity) / 2; // Average the measured velocity and the setpoint to reduce oscillations
+            double step = std::clamp(target_velocity - v_current, -ForwardLimits.deceleration * dt, ForwardLimits.acceleration * dt);
+            target_v += step;
+            target_a = step / dt;
             target_w = pid_heading.compute(target_heading, total_heading, dt);
-            
+            target_alpha = 0;
+
             if (!moving)
             {
                 motion_state = MotionState::Stop;
@@ -534,8 +675,10 @@ void motion_update(void)
         }
     }
 
-    if (initialized != 2)
+    if (!enabled ||initialized != 2)
     {
+        distance = 0;
+        total_heading = 0;
         target_speed = 0;
         target_distance = distance;
         target_heading = total_heading;

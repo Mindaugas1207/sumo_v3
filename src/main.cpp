@@ -12,86 +12,47 @@
 #include "app/motion.h"
 #include "app/sensors.h"
 
+enum class CombatState
+{
+    Search,
+    Attack,
+    Push
+};
 
+CombatState combat_state = CombatState::Search;
 
-//#include "config.h"
+SensorData sensorData;
+LineAvoidanceState lineAvoidanceState;
+MotionState motionState;
 
-bool display_enabled = true;
-bool start_state = false;
-constexpr int MOVE_COOLDOWN_MS = 80; // Move cooldown in milliseconds, because sensors internaly are read at this interval
-constexpr int MOVE_TIMEOUT = 150; // Move timeout in milliseconds
-
-
-// Sensor index definitions for easier reference in the code
-constexpr int SI_LEFT45 = 5;
-constexpr int SI_RIGHT45 = 1;
-constexpr int SI_FRONT = 3;
-constexpr int SI_LEFT2p5 = 6;
-constexpr int SI_RIGHT2p5 = 0;
-constexpr int SI_LEFT35 = 2;
-constexpr int SI_RIGHT35 = 4;
-
-constexpr int FRONT_SENSOR_ATTACK_THRESHOLD = 100; // Distance threshold for preparing attack in mm
-constexpr int ATTACK_PREPARE_TIME = 150;
-constexpr int ATTACK_TIMEOUT = 120; // Attack timeout in milliseconds
-constexpr double ATTACK_VELOCITY = 0.1;
-constexpr double SEARCH_VELOCITY = 0.2;
-
-bool tst = false;
-bool dir = false;
+void handle_combat();
 
 int main()
 {
     hardware_init();
-    
-    
-    //left_motor.setPower(0.4);
-     //   right_motor.setPower(0.4);
-
-    //bool line_sensor_triggered = false;
     motion_init();
-    
-
-    //utils::time_t last_move_time = 0;
-    //bool on_cooldown = false;
-
-    //utils::time_t attack_prepare_start_time = 0;
-    //utils::time_t attack_target_last_detected_time = 0;
 
     while (true)
     {
-        
+        bool start_state = gpio_get(START_PIN);
+        motion_set_enabled(start_state);
 
-        //bool st = gpio_get(START_PIN);
-        //if (st != start_state)
-        //{
-        //    start_state = st;
-        //    if (start_state)
-        //    {
-        //        motion_set_motors_enabled(true);
-        //        display_enabled = false;
-        //    }
-        //    else
-        //    {
-        //        motion_set_motors_enabled(false);
-        //        display_enabled = true;
-        //    }
-        //}
+        sensorData = get_sensor_data();
+        lineAvoidanceState = get_line_avoidance_state();
+        motionState = get_motion_state();
+
+        if (start_state)
+        {
+            handle_combat();
+        }
+        else
+        {
+            handle_remote();
+            handle_display();
+            STATUS_Led.update();
+        }
 
         motion_update();
-
-        handle_remote();
-        //if (start_state)
-        //{
-
-        //}
-        //else
-        //{
-        //    handle_remote();
-        //    STATUS_Led.update();
-        //}
-
-        handle_display();
     }
 }
 
@@ -100,9 +61,55 @@ void second_core_main(void)
     sensors_init();
     while (true)
     {
-        tight_loop_contents();
         handle_sensors();
+        utils::sleep_ms(10);
     }
+}
+
+void handle_search()
+{
+    if (lineAvoidanceState == LineAvoidanceState::None)
+    {
+        if (sensorData.targetDetected)
+        {
+            motion_stop();
+            combat_state = CombatState::Attack;
+        }
+        else if (motionState == MotionState::Idle)
+        {
+            motion_move(0.4, 0.0);
+        }
+    }
+}
+
+void handle_attack()
+{
+    if (lineAvoidanceState == LineAvoidanceState::None)
+    {
+        if (!sensorData.targetDetected)
+        {
+            motion_stop();
+            combat_state = CombatState::Search;
+        }
+    }
+}
+
+
+void handle_combat()
+{
+    switch (combat_state)
+    {
+        case CombatState::Search:
+            handle_search();
+            break;
+        case CombatState::Attack:
+            handle_attack();
+            break;
+        case CombatState::Push:
+            // Handle push behavior
+            break;
+    }
+
 }
 
 

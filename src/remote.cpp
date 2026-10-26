@@ -50,11 +50,9 @@ void handle_remote(void)
         {
         case IrCommand::CH1:
             if (repeat) break;
-            motion_test(true); // Run motion test when CH1 is pressed
             break;
         case IrCommand::CH2:
             if (repeat) break;
-            motion_test(true); // Run motion test when CH2 is pressed
             break;
         case IrCommand::UP:
             if (repeat) break;
@@ -74,23 +72,23 @@ void handle_remote(void)
             break;
         case IrCommand::VOLUP:
             if (repeat) break;
-            motion_test(true); // Run motion test when VOLUP is pressed
+            //motion_test(true); // Run motion test when VOLUP is pressed
             break;
         case IrCommand::VOLDOWN:
             if (repeat) break;
-            motion_test(false); // Run motion test when VOLDOWN is pressed
+            //motion_test(false); // Run motion test when VOLDOWN is pressed
             break;
         case IrCommand::CHUP:
             if (repeat) break;
-            motion_turn_test(true); // Run turn test when CHUP is pressed
+            //motion_turn_test(true); // Run turn test when CHUP is pressed
             break;
         case IrCommand::CHDOWN:
             if (repeat) break;
-            motion_turn_test(false); // Run turn test when CHDOWN is pressed
+            //motion_turn_test(false); // Run turn test when CHDOWN is pressed
             break;
         case IrCommand::MP:
             if (repeat) break;
-            motion_zero_position();
+            //motion_zero_position();
             break;
         case IrCommand::MUTE:
             if (repeat) break;
