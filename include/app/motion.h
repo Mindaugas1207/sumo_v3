@@ -38,18 +38,12 @@ LineAvoidanceState get_line_avoidance_state(void);
 void motion_set_enabled(bool);
 
 vmath::vector2d<double> get_ring_position(void);
-
-vmath::vector2d<double> get_ring_offset(void);
 double get_ring_sigma(void);
 
-vmath::vector2d<double> get_ring_raw(void);
-
 bool get_ring_left_hit(void);
-
 bool get_ring_right_hit(void);
 vmath::vector2d<double> get_line_sensor_left_pos(void);
 vmath::vector2d<double> get_line_sensor_right_pos(void);
-bool get_line_sensor_left_first(void);
 
 double get_distance_to_line(void);
 

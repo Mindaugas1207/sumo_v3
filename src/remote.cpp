@@ -88,7 +88,7 @@ void handle_remote(void)
             break;
         case IrCommand::MP:
             if (repeat) break;
-            //motion_zero_position();
+            motion_zero_position();
             break;
         case IrCommand::MUTE:
             if (repeat) break;
