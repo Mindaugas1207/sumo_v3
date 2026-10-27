@@ -125,28 +125,36 @@ struct RingTracker
 
     double distanceToLine(double heading) const
     {
-        auto u = vmath::vector2d<double>::fromAngle(heading);
+        auto u = vmath::vector2d<double>::fromAngle(heading + M_PI_2);
         double cu = circle_position.dot(u);
         double c2 = circle_position.dot(circle_position);
         double R = RingInnerRadius - sigma;
         double D = R * R - c2 + cu * cu;
         if (D < 0.0)
             return 0.0; // No intersection, return 0 distance
-        double s = cu - vmath::sqrt(D);
-        double t0 = cu - s;
+        double root = vmath::sqrt(D);
+        double t0 = cu - root;
         if (t0 >= 0.0) return t0;
-        double t1 = cu + s;
+        double t1 = cu + root;
         if (t1 >= 0.0) return t1;
 
         return 0.0; // No valid intersection in the forward direction
+    }
+
+    double angleToCenter(double heading) const
+    {
+        return vmath::angleDifference(heading, std::atan2(circle_position.X, circle_position.Y));
     }
 
     void updatePosition(double distance, double heading)
     {
         double deltaDistance = distance - lastDistance;
         lastDistance = distance;
-        circle_position += vmath::vector2d<double>::fromAngle(heading + M_PI_2, deltaDistance); //Heading is referenced from the forward driving direction (Y axis)
+        auto v = vmath::vector2d<double>::fromAngle(heading + M_PI_2, deltaDistance);
+        circle_position -= v; //Heading is referenced from the forward driving direction (Y axis)
         sigma = std::clamp(sigma + std::abs(deltaDistance) * RingDriftK, 0.0, RingInnerRadius); // Update uncertainty based on distance traveled
+        if (line_sensor_left_hit) line_sensor_left_position -= v;
+        if (line_sensor_right_hit) line_sensor_right_position -= v;
     }
 
     void updateLineSensorLeft(double heading) //Left sensor has "hit"
@@ -179,7 +187,7 @@ struct RingTracker
     {
         line_sensor_left_hit = false;
         line_sensor_right_hit = false;
-        circle_position = vmath::vector2d{0.0, RingInnerRadius}; //At start the ring center is infront of the robot
+        circle_position = vmath::vector2d{0.0, RingInnerRadius - WHEEL_RADIUS}; //At start the ring center is infront of the robot
         sigma = 0;
     }
 
@@ -193,16 +201,27 @@ private:
         sigma *= 1.0 - RingRadialRecovery; // Reduce uncertainty after radial update
     }
 
-    bool chordUpdate(vmath::vector2d<double> A, vmath::vector2d<double> B, double heading)
+    void chordUpdate(vmath::vector2d<double> A, vmath::vector2d<double> B, double heading)
     {
         //When both line sensors have detected the line, we can estimate the circle center using the chord formed by the two sensor positions.
         //Since the only way that both sensors can see the line is if the robot is facing the edge then the center of the ring is neceseraly behind the robot at a distance R, along the direction perpendicular to the chord formed by the two sensor positions.
         //We find the angle between the robot's heading and the chord's perpendicular direction using the known line sensor's X seperation and the chord length.
         //The accuracy of this method only depends on the sensor precision and the odometry precision during the movement from one line sensor detection to the other, since the white line is very thin the odometry error is negligible.
-        auto v = A - B;
-        double chord_length = v.length();
-        double theta = std::acos(LineSensorX * 2.0 / chord_length);
-        circle_position = vmath::vector2d{0.0, -RingInnerRadius + LineSensorY}.rotate(heading + theta); //-RingInnerRadius because the ring is behind the robot, LineSensorY accounts for the sensor's Y offset
+        auto chord = B - A;
+        auto midpoint = (A + B) * 0.5;
+
+        auto normal = chord.rotate(M_PI_2).normalize();
+
+        double L = chord.length();
+        double h = std::sqrt(RingInnerRadius * RingInnerRadius - 0.25 * L * L);
+
+        auto center1 = midpoint + normal * h;
+        auto center2 = midpoint - normal * h;
+
+        auto forward = vmath::vector2d<double>::fromAngle(heading + M_PI_2);
+
+        circle_position = (center1.dot(forward) < center2.dot(forward)) ? center1 : center2;
+        
         sigma = 0; // Reset uncertainty after chord update
     }
 };
@@ -281,6 +300,11 @@ vmath::vector2d<double> get_ring_position(void)
 double get_ring_sigma(void)
 {
     return ring_tracker.sigma;
+}
+
+double get_ring_angle_to_center(void)
+{
+    return ring_tracker.angleToCenter(total_heading);
 }
 
 bool get_ring_left_hit(void)
@@ -536,7 +560,7 @@ void motion_update(void)
         }
     }
 
-    bool on_line = line_detected || line_was_detected;
+    bool on_line = false;//line_detected || line_was_detected;
 
     switch (line_avoidance_state)
     {
