@@ -3,19 +3,7 @@
 #include "motion.h"
 #include "hardware.h"
 #include "vmath.h"
-#include "pico/multicore.h"
-#include "hardware/sync.h"
 #include "pid.h"
-/*
-enum class ControlCommands
-{
-    DISTANCE, // Command to move a specific distance
-    ANGLE, // Command to rotate by a specific angle
-    LINEAR_VELOCITY, // Command to move at a specific linear velocity
-    ANGULAR_VELOCITY, // Command to move at a specific angular velocity
-    BREAK // Command to apply braking function to immediately stop the robot
-};
-*/
 constexpr double NominalMotorRPM = 600.0;
 constexpr double NominalMotorVoltage = 6.0;
 constexpr double SystemVoltage = 12.0;
@@ -97,6 +85,7 @@ constexpr double MinHeadingError = 1.0 * M_PI / 180.0; // Minimum heading error 
 constexpr double MinVelocity = MinWheelMps / 5; // Minimum velocity to consider the robot as having reached its target, in m/s.
 constexpr double MinAngularVelocity = MinRobotTurningRadS / 4; // Minimum angular velocity to consider the robot as having reached its target, in rad/s.
 constexpr double StopDeceleration = 20.0; // Deceleration used during an emergency stop, in m/s^2.
+constexpr double LineSafetyMargin = 0.05; //meters
 constexpr double LineReturnDistance = 0.1; // Distance to move back after detecting a line, in meters.
 
 constexpr double RingDiameter = 0.77;
@@ -143,7 +132,7 @@ struct RingTracker
 
     double angleToCenter(double heading) const
     {
-        return vmath::angleDifference(heading, std::atan2(circle_position.X, circle_position.Y));
+        return vmath::angleDifference(heading + M_PI_2, std::atan2(circle_position.Y, circle_position.X));
     }
 
     void updatePosition(double distance, double heading)
@@ -183,12 +172,19 @@ struct RingTracker
         line_sensor_right_hit = false;
     }
 
+    void clearLineSensors(void)
+    {
+        line_sensor_left_hit = false;
+        line_sensor_right_hit = false;
+    }
+
     void reset(void)
     {
         line_sensor_left_hit = false;
         line_sensor_right_hit = false;
         circle_position = vmath::vector2d{0.0, RingInnerRadius - WHEEL_RADIUS}; //At start the ring center is infront of the robot
         sigma = 0;
+        lastDistance = 0;
     }
 
 private:
@@ -286,7 +282,9 @@ constexpr int InitializationDelay = 500; // in milliseconds
 utils::time_t initialization_start_time = 0;
 bool repeated_line = false;
 bool enabled = false;
+bool line_avoidance_enabled = false;
 LineAvoidanceState line_avoidance_state = LineAvoidanceState::None;
+double distance_to_line = 0.0;
 
 RingTracker ring_tracker;
 
@@ -329,7 +327,7 @@ vmath::vector2d<double> get_line_sensor_right_pos(void)
 
 double get_distance_to_line(void)
 {
-    return ring_tracker.distanceToLine(total_heading);
+    return distance_to_line;
 }
 
 void motion_init(void)
@@ -404,7 +402,10 @@ MotionState get_motion_state(void)
 }
 
 
-
+void motion_set_line_avoidance_enabled(bool en)
+{
+    line_avoidance_enabled = en;
+}
 
 LineAvoidanceState get_line_avoidance_state(void)
 {
@@ -499,7 +500,8 @@ void motion_update(void)
 
     //Update orientation even when stationary as the madgwic filter keeps maintains stable orientation estimation even without movement.
     orientation = q.eulerAngles(); // Orientation in world frame, referenced to initial orientation at power on, ZYX order (yaw-pitch-roll)
-
+    double d_heading = vmath::angleDifference(last_heading, orientation.yaw()); // Change in heading since last update
+    last_heading = orientation.yaw();
     if (!stationary)
     {
         auto q_tilt = vmath::quaternion<>::fromRotationZ(-orientation.yaw()) * q; // Remove heading to get tilt-compensated acceleration and angular velocity in the robot-heading-aligned frame
@@ -507,17 +509,9 @@ void motion_update(void)
         auto new_angular_velocity = (q_tilt * w_imu * q_tilt.conjugate()).toVector(); // Rotate angular velocity to robot-heading-aligned frame, no need to remove gravity since it's a vector and doesn't affect rotation
         angular_acceleration = (new_angular_velocity - angular_velocity) / dt; // Compute angular acceleration in the robot-heading-aligned frame
         angular_velocity = new_angular_velocity; // Update angular velocity
+        total_heading += d_heading; // Accumulate total heading change, doing this here prevents drift when stationary
     }
-    //double w_heading = angular_velocity.yaw();
-    //double remaining_angle = vmath::angleDifference(target_heading, heading); // Remaining angle to the target (method handles wrapping)
-    //double stopping_angle = (target_w * target_w) / (MaxAngularDeceleration); // Angle required to stop the robot from current angular velocity
-    //stopping_angle = target_w >= 0 ? stopping_angle : -stopping_angle;
 
-    double d_heading = vmath::angleDifference(last_heading, orientation.yaw()); // Change in heading since last update
-    last_heading = orientation.yaw();
-    total_heading += d_heading; // Accumulate total heading change
-    
-    
     bool line_left = gpio_get(LINE_SENSOR_LEFT_PIN);
     bool line_right = gpio_get(LINE_SENSOR_RIGHT_PIN);
     bool line_detected = line_left || line_right;
@@ -525,11 +519,6 @@ void motion_update(void)
     bool moving_forward = moving && velocity > MinVelocity;
 
     ring_tracker.updatePosition(distance, total_heading);
-    
-
-    //bool rotating_left = moving && angular_velocity.yaw() > 0;
-
-    //bool in_circle = distance - line_detected_distance < -MinDistance;
 
     //double motors_w_avg = (wL + wR) / 2.0;
     //double motors_bemf_avg = std::min(Kv * std::abs(motors_w_avg), SystemVoltage - Ks); // Ks is already part of MinDeceleration
@@ -560,13 +549,13 @@ void motion_update(void)
         }
     }
 
-    bool on_line = false;//line_detected || line_was_detected;
+    bool on_line = line_detected || line_was_detected;
 
     switch (line_avoidance_state)
     {
         case LineAvoidanceState::None:
         {
-            if (on_line)
+            if (on_line && line_avoidance_enabled)
             {
                 if (!repeated_line)
                 {
@@ -579,6 +568,7 @@ void motion_update(void)
             {
                 repeated_line = false;
                 line_was_detected = false;
+                ring_tracker.clearLineSensors();
             }
             break;
         }
@@ -605,7 +595,7 @@ void motion_update(void)
                     line_was_detected = false;
                 }
                 target_distance = 0;
-                target_heading = total_heading + M_PI;
+                target_heading = total_heading + ring_tracker.angleToCenter(total_heading);
                 target_speed = 0;
                 motion_state = MotionState::Turning;
                 line_avoidance_state = LineAvoidanceState::None;
@@ -614,7 +604,18 @@ void motion_update(void)
         }
     }
 
+    distance_to_line = ring_tracker.distanceToLine(total_heading);
     double remaining_distance = target_distance - distance;
+    if (remaining_distance > 0)
+    {
+        if (distance_to_line < remaining_distance)
+        {
+            // Adjust remaining distance to avoid crossing the line
+            remaining_distance = std::max(0.0, distance_to_line - LineSafetyMargin);
+        }
+    }
+
+    
     double heading_error = target_heading - total_heading; // Remaining heading error (method handles wrapping)
     delta_heading = heading_error;
 
@@ -719,7 +720,7 @@ void motion_update(void)
             target_w = pid_heading.compute(target_heading, total_heading, dt);
             target_alpha = 0;
 
-            if (!moving)
+            if (!moving && std::abs(target_velocity) < MinVelocity)
             {
                 motion_state = MotionState::Stop;
             }

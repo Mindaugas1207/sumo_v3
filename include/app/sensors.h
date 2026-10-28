@@ -10,6 +10,9 @@ struct SensorData
     std::array<int, 7> distanceSensorValues;
     bool distanceSensorDetected[7];
     bool targetDetected;
+
+    int nearestTargetDistance;
+    double nearestTargetAngle;
 };
 
 void sensors_init(void);

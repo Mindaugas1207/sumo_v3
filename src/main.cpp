@@ -36,6 +36,7 @@ int main()
     {
         bool start_state = gpio_get(START_PIN);
         motion_set_enabled(start_state);
+        motion_set_line_avoidance_enabled(start_state);
 
         sensorData = get_sensor_data();
         lineAvoidanceState = get_line_avoidance_state();
@@ -78,7 +79,7 @@ void handle_search()
         }
         else if (motionState == MotionState::Idle)
         {
-            motion_move(0.4, 0.0);
+            motion_move(get_distance_to_line(), 0.0);
         }
     }
 }
@@ -91,6 +92,10 @@ void handle_attack()
         {
             motion_stop();
             combat_state = CombatState::Search;
+        }
+        else if (motionState == MotionState::Idle)
+        {
+            motion_move(0.0, sensorData.nearestTargetAngle);
         }
     }
 }

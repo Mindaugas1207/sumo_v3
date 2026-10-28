@@ -36,6 +36,7 @@ extern double distance;
 MotionState get_motion_state(void);
 LineAvoidanceState get_line_avoidance_state(void);
 void motion_set_enabled(bool);
+void motion_set_line_avoidance_enabled(bool);
 double get_ring_angle_to_center(void);
 vmath::vector2d<double> get_ring_position(void);
 double get_ring_sigma(void);

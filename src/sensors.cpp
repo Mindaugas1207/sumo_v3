@@ -67,6 +67,8 @@ SensorData get_sensor_data(void)
 
     SensorData data;
     data.targetDetected = false;
+    int nearest_distance = MAX_DISTANCE;
+    double nearest_angle = 0.0;
     for (int i = 0; i < num_distance_sensors; i++)
     {
         int value = (*sensors)[i];
@@ -74,8 +76,14 @@ SensorData get_sensor_data(void)
         bool detected = value < DETECTION_THRESHOLD;
         data.distanceSensorDetected[i] = detected;
         data.targetDetected = data.targetDetected || detected;
+        if (detected && value < nearest_distance)
+        {
+            nearest_distance = value;
+            nearest_angle = sensorAngles[i];
+        }
     }
+    data.nearestTargetDistance = nearest_distance;
+    data.nearestTargetAngle = nearest_angle;
     return data;
 }
-
 
