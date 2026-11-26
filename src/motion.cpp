@@ -76,24 +76,24 @@ struct MotionLimits
 };
 
 // Wheels are at the rear and the centre of mass is forward, so grip differs by direction of travel and by speeding up vs braking.
-constexpr MotionLimits ForwardLimits = {14.0, 9.0, MaxVelocity};
+constexpr MotionLimits ForwardLimits = {7.0, 5.0, MaxVelocity};
 constexpr MotionLimits ReverseLimits = {5.0, 5.0, MaxVelocity};
-constexpr MotionLimits RotationalLimits = {300, 120, MaxAngularVelocity};
+constexpr MotionLimits RotationalLimits = {150, 100, MaxAngularVelocity};
 
 constexpr double MinDistance = 0.005; // Minimum distance to consider the robot as having reached its target, in meters.
 constexpr double MinHeadingError = 1.0 * M_PI / 180.0; // Minimum heading error to consider the robot as having reached its target, in rad.
 constexpr double MinVelocity = MinWheelMps / 5; // Minimum velocity to consider the robot as having reached its target, in m/s.
 constexpr double MinAngularVelocity = MinRobotTurningRadS / 4; // Minimum angular velocity to consider the robot as having reached its target, in rad/s.
-constexpr double StopDeceleration = 20.0; // Deceleration used during an emergency stop, in m/s^2.
-constexpr double LineSafetyMargin = 0.05; //meters
+constexpr double StopDeceleration = 15.0; // Deceleration used during an emergency stop, in m/s^2.
+constexpr double LineSafetyMargin = 0.15; //meters
 constexpr double LineReturnDistance = 0.1; // Distance to move back after detecting a line, in meters.
 
 constexpr double RingDiameter = 0.77;
 constexpr double RingRadius = RingDiameter / 2.0;
 constexpr double RingWhiteWidth = 0.025; // Width of the white line on the ring, in meters.
 constexpr double RingInnerRadius = RingRadius - RingWhiteWidth; // Inner radius of the ring, in meters.
-constexpr double RingDriftK = 0.03;
-constexpr double RingRadialRecovery = 0.5; // Fraction of uncertainty reduced after a radial update
+constexpr double RingDriftK = 0.3;
+constexpr double RingRadialRecovery = 0.2; // Fraction of uncertainty reduced after a radial update
 // Line sensor positions relative to the robot's rotation center.
 constexpr double LineSensorX = 0.043;
 constexpr double LineSensorY = 0.082;
@@ -163,10 +163,10 @@ struct RingTracker
     {
         if (line_sensor_left_hit && line_sensor_right_hit)
             chordUpdate(line_sensor_left_position, line_sensor_right_position, heading);
-        else if (line_sensor_left_hit)
-            radialUpdate(line_sensor_left_position);
-        else if (line_sensor_right_hit)
-            radialUpdate(line_sensor_right_position);
+        //else if (line_sensor_left_hit)
+            //radialUpdate(line_sensor_left_position);
+        //else if (line_sensor_right_hit)
+            //radialUpdate(line_sensor_right_position);
 
         line_sensor_left_hit = false;
         line_sensor_right_hit = false;
@@ -182,7 +182,7 @@ struct RingTracker
     {
         line_sensor_left_hit = false;
         line_sensor_right_hit = false;
-        circle_position = vmath::vector2d{0.0, RingInnerRadius - WHEEL_RADIUS}; //At start the ring center is infront of the robot
+        circle_position = vmath::vector2d{0.0, -(RingInnerRadius/2 - WHEEL_RADIUS)}; //At start the ring center is infront of the robot
         sigma = 0;
         lastDistance = 0;
     }
@@ -611,7 +611,7 @@ void motion_update(void)
         if (distance_to_line < remaining_distance)
         {
             // Adjust remaining distance to avoid crossing the line
-            remaining_distance = std::max(0.0, distance_to_line - LineSafetyMargin);
+            remaining_distance = std::max(0.05, distance_to_line - LineSafetyMargin);
         }
     }
 

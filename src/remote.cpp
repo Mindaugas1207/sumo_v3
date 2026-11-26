@@ -115,7 +115,7 @@ void handle_remote(void)
             if (repeat) break;
             calibrate_imu();
             break;
-        case IrCommand::POWER: // Handle Reboot command
+        case IrCommand::TIME: // Handle Reboot command
             if (repeat) break;
             STATUS_Led.setBlocking(Color::Magenta());
             //active_config.configured = false;

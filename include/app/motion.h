@@ -7,7 +7,7 @@ void motion_init(void);
 void motion_update(void);
 
 // Relative move: delta_distance in m (+forward), delta_angle in rad (+CCW). Either may be 0.
-constexpr double CoastingVelocity = 0.4; // Velocity to maintain during coasting, in m/s.
+constexpr double CoastingVelocity = 0.2; // Velocity to maintain during coasting, in m/s.
 void motion_move(double delta_distance, double delta_angle, double coasting_velocity = CoastingVelocity);
 void motion_turn_test(bool left);
 void motion_test(bool forward);

@@ -25,6 +25,10 @@ SensorData sensorData;
 LineAvoidanceState lineAvoidanceState;
 MotionState motionState;
 
+utils::time_t t_start = 0;
+bool pasisuko = false;
+bool sukas = false;
+
 void handle_combat();
 
 int main()
@@ -37,24 +41,41 @@ int main()
         bool start_state = gpio_get(START_PIN);
         motion_set_enabled(start_state);
         motion_set_line_avoidance_enabled(start_state);
+        if (!start_state) pasisuko = false;
 
         sensorData = get_sensor_data();
         lineAvoidanceState = get_line_avoidance_state();
         motionState = get_motion_state();
 
+
         if (start_state)
         {
-            //handle_combat();
+            if (pasisuko)
+            {
+                handle_combat();
+            }
+            else
+            {
+                if (!sukas)
+                {
+                    motion_move(0, 180.0 * M_PI / 180.0);
+                    sukas = true;
+                }
+                else if (motionState == MotionState::Idle)
+                {
+                    motion_stop();
+                    sukas = false;
+                    pasisuko = true;
+                }
+            }
         }
         else
         {
-            
-            
             STATUS_Led.update();
+            handle_remote();
+            handle_display();
         }
-        handle_remote();
         motion_update();
-        handle_display();
     }
 }
 
@@ -64,42 +85,123 @@ void second_core_main(void)
     while (true)
     {
         handle_sensors();
-        utils::sleep_ms(10);
+        utils::sleep_ms(5);
     }
 }
-
+double found_angle = 0;
 void handle_search()
 {
     if (lineAvoidanceState == LineAvoidanceState::None)
     {
         if (sensorData.targetDetected)
         {
+            found_angle = sensorData.nearestTargetAngle;
             motion_stop();
             combat_state = CombatState::Attack;
+            t_start = utils::now();
         }
         else if (motionState == MotionState::Idle)
         {
-            motion_move(get_distance_to_line(), 0.0);
+            if (get_distance_to_line() < 0.05)
+            {
+                motion_move(0.05, 0.0, 0.2);
+            }
+            else
+            {
+                motion_move(get_distance_to_line(), 0.0, 0.2);
+            }
         }
     }
 }
-
+double push_distance = 0;
 void handle_attack()
 {
     if (lineAvoidanceState == LineAvoidanceState::None)
     {
+        if (found_angle != 0)
+        {
+            if (motionState == MotionState::Idle)
+            {
+                motion_move(0.0, -found_angle);
+                found_angle = 0;
+                t_start = utils::now();
+                
+            }
+            return;
+        }
+
+        bool timeout = utils::hasElapsed_ms(t_start, 50);
+
         if (!sensorData.targetDetected)
         {
-            motion_stop();
-            combat_state = CombatState::Search;
+            if (timeout && motionState == MotionState::Idle)
+            {
+                motion_stop();
+                combat_state = CombatState::Search;
+                t_start = utils::now();
+                return;
+            }
         }
-        else if (motionState == MotionState::Idle)
+        else if (std::abs(sensorData.nearestTargetAngle) < 1 * M_PI / 180.0)
         {
-            motion_move(0.0, sensorData.nearestTargetAngle);
+            if (timeout)
+            {
+                push_distance = sensorData.nearestTargetDistance / 2000;
+                if (push_distance < 0.1) push_distance = 0.10;
+                motion_stop();
+                combat_state = CombatState::Push;
+                t_start = utils::now();
+                return;
+            }
         }
+        else
+        {
+            if (motionState == MotionState::Idle)
+            {
+                motion_move(0.0, -sensorData.nearestTargetAngle);
+                t_start = utils::now();
+            }
+        }
+        
+        
     }
 }
 
+void handle_push()
+{
+    if (lineAvoidanceState == LineAvoidanceState::None)
+    {
+        bool timeout = utils::hasElapsed_ms(t_start, 100);
+        if (!sensorData.targetDetected)
+        {
+            if (timeout)
+            {
+                motion_stop();
+                combat_state = CombatState::Search;
+                t_start = utils::now();
+                return;
+            }
+        }
+        else if (std::abs(sensorData.nearestTargetAngle) > 1 * M_PI / 180.0)
+        {
+            if (timeout)
+            {
+                motion_stop();
+                combat_state = CombatState::Attack;
+                t_start = utils::now();
+                return;
+            }
+        }
+        else
+        {
+            if (motionState == MotionState::Idle)
+            {
+                motion_move(push_distance, sensorData.nearestTargetAngle, 0.2); // Push forward
+                t_start = utils::now();
+            }
+        }
+    }
+}
 
 void handle_combat()
 {
@@ -112,7 +214,7 @@ void handle_combat()
             handle_attack();
             break;
         case CombatState::Push:
-            // Handle push behavior
+            handle_push();
             break;
     }
 

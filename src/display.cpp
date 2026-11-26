@@ -1,4 +1,5 @@
 
+#include "hardware.h"
 #include "ssd1306.h"
 #include "lcd.h"
 #include "graphics.h"
@@ -113,7 +114,7 @@ public:
         int y = TOP_RIBON_SIZE;
         int textHeight = g.getFontHeight();
         char buffer[50];
-/*
+
         SensorData sensorData = get_sensor_data();
         snprintf(buffer, sizeof(buffer), "%.4d %.4d %.4d %.4d %.4d %.4d %.4d", 
                 sensorData.distanceSensorValues[0],
@@ -125,7 +126,15 @@ public:
                 sensorData.distanceSensorValues[6]);
         g.drawText(x, y, buffer, -1, -1, Color::White());
         y += textHeight;
-        */
+        bool line_left = gpio_get(5);
+        bool line_right = gpio_get(13);
+
+        snprintf(buffer, sizeof(buffer), "LEFT: %d RIGHT: %d", 
+                line_left,
+                line_right);
+        g.drawText(x, y, buffer, -1, -1, Color::White());
+        y += textHeight;
+        /*
         vmath::vector2d<double> pos = get_ring_position();
         double sigma = get_ring_sigma();
         vmath::vector2d<double> leftPos = get_line_sensor_left_pos();
@@ -133,6 +142,7 @@ public:
         bool left_hit = get_ring_left_hit();
         bool right_hit = get_ring_right_hit();
         double distance_to_line = get_distance_to_line();
+        SensorData sensorData = get_sensor_data();
         snprintf(buffer, sizeof(buffer), "H: %.2f T: %.2f D: %.2f", total_heading * 180.0 / M_PI, target_heading * 180.0 / M_PI, delta_heading * 180.0 / M_PI);
         g.drawText(x, y, buffer, -1, -1, Color::White());
         y += textHeight;
@@ -142,7 +152,7 @@ public:
         snprintf(buffer, sizeof(buffer), "Pos: %.3f %.3f A: %.2f", pos.X, pos.Y, get_ring_angle_to_center() * 180.0 / M_PI);
         g.drawText(x, y, buffer, -1, -1, Color::White());
         y += textHeight;
-        snprintf(buffer, sizeof(buffer), "Sigma: %.3f", sigma);
+        snprintf(buffer, sizeof(buffer), "Sigma: %.3f NTA: %.2f", sigma, sensorData.nearestTargetAngle * 180.0 / M_PI);
         g.drawText(x, y, buffer, -1, -1, Color::White());
         y += textHeight;
         snprintf(buffer, sizeof(buffer), "Left Pos: %.3f %.3f", leftPos.X, leftPos.Y);
@@ -154,7 +164,7 @@ public:
         snprintf(buffer, sizeof(buffer), "LH:%d RH:%d", left_hit, right_hit);
         g.drawText(x, y, buffer, -1, -1, Color::White());
         y += textHeight;
-
+        */
         /*
         snprintf(buffer, sizeof(buffer), "Delta Heading: %.2f", delta_heading * 180.0 / M_PI);
         g.drawText(x, y, buffer, -1, -1, Color::White());

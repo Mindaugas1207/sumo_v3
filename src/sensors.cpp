@@ -4,20 +4,20 @@
 #include "sensors.h"
 #include <array>
 #include <atomic>
-constexpr double distanceFilter = 0.0;
+constexpr double distanceFilter = 0.1;
 
 using SensorArray = std::array<int, num_distance_sensors>;
 
 //Sensor angles are from left to right, relative to the front of the robot,
 //0 is the front of the robot
 constexpr double sensorAngles[num_distance_sensors] = {
-    -45,  // Sensor 0 angle
-    -25.0, // Sensor 1 angle
-    -1.5, // Sensor 2 angle
-    0.0,// Sensor 3 angle
-    1.5,// Sensor 4 angle
-    25.0,// Sensor 5 angle
-    45.0,// Sensor 6 angle
+    -45 * M_PI / 180.0,  // Sensor 0 angle
+    -25.0 * M_PI / 180.0, // Sensor 1 angle
+    -3.0 * M_PI / 180.0, // Sensor 2 angle
+    0.0 * M_PI / 180.0,// Sensor 3 angle
+    3.0 * M_PI / 180.0,// Sensor 4 angle
+    25.0 * M_PI / 180.0,// Sensor 5 angle
+    45.0 * M_PI / 180.0,// Sensor 6 angle
 };
 
 SensorArray filteredBuffer;
@@ -82,6 +82,43 @@ SensorData get_sensor_data(void)
             nearest_angle = sensorAngles[i];
         }
     }
+
+    if (data.distanceSensorDetected[3])
+    {
+        nearest_distance = data.distanceSensorValues[3];
+        nearest_angle = sensorAngles[3];
+    }
+    else if (data.distanceSensorDetected[2])
+    {
+        nearest_distance = data.distanceSensorValues[2];
+        nearest_angle = sensorAngles[2];
+    }
+    else if (data.distanceSensorDetected[4])
+    {
+        nearest_distance = data.distanceSensorValues[4];
+        nearest_angle = sensorAngles[4];
+    }
+    else if (data.distanceSensorDetected[1])
+    {
+        nearest_distance = data.distanceSensorValues[1];
+        nearest_angle = sensorAngles[1];
+    }
+    else if (data.distanceSensorDetected[5])
+    {
+        nearest_distance = data.distanceSensorValues[5];
+        nearest_angle = sensorAngles[5];
+    }
+    else if (data.distanceSensorDetected[0])
+    {
+        nearest_distance = data.distanceSensorValues[0];
+        nearest_angle = sensorAngles[0];
+    }
+    else if (data.distanceSensorDetected[6])
+    {
+        nearest_distance = data.distanceSensorValues[6];
+        nearest_angle = sensorAngles[6];
+    }
+
     data.nearestTargetDistance = nearest_distance;
     data.nearestTargetAngle = nearest_angle;
     return data;

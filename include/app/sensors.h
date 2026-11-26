@@ -20,7 +20,7 @@ void handle_sensors(void);
 
 SensorData get_sensor_data(void);
 
-inline constexpr int MAX_DISTANCE = 1000;
-inline constexpr int DETECTION_THRESHOLD = 400;
+inline constexpr int MAX_DISTANCE = 400;
+inline constexpr int DETECTION_THRESHOLD = 250;
 
 #endif // SENSORS_H
